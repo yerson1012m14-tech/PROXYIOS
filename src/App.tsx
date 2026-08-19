@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Folder, 
   FileText, 
@@ -28,7 +28,15 @@ import {
   FileCode,
   Shield,
   Layers,
-  Sliders
+  Sliders,
+  Power,
+  Zap,
+  Activity,
+  AlertTriangle,
+  Play,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { INITIAL_APPS, INITIAL_FILE_SYSTEM, formatFileSize } from './mockFileSystem';
 import { FileItem, AppMetadata } from './types';
@@ -59,8 +67,64 @@ export default function App() {
   const [newFileName, setNewFileName] = useState('');
   const [newFileContent, setNewFileContent] = useState('');
 
-  // Unrestricted filesystem engine status (simulating asegurarMotor)
-  const [engineActive, setEngineActive] = useState(true);
+  // -------------------------------------------------------------
+  // MOTOR MCMFILZA (asegurarMotor / TweakInit / MCMFilzaStart)
+  // -------------------------------------------------------------
+  const [motorEncendido, setMotorEncendido] = useState<boolean>(true);
+  const [motorIniciando, setMotorIniciando] = useState<boolean>(false);
+  const [mostrarLogsMotor, setMostrarLogsMotor] = useState<boolean>(false);
+  const [alertaMotorApagado, setAlertaMotorApagado] = useState<boolean>(false);
+  const [motorLogs, setMotorLogs] = useState<string[]>([
+    '[asegurarMotor] Inicializado: dlsym(RTLD_DEFAULT, "TweakInit") -> OK',
+    '[asegurarMotor] MCMFilzaStart() -> 0',
+    '[asegurarMotor] MCMFilzaSetUnrestrictedFilesystem(1) -> Sandbox Desactivado',
+    '[Sistema] Motor MCMFilza en estado listo.'
+  ]);
+
+  // Función para encender / apagar el motor
+  const encenderMotor = () => {
+    if (motorIniciando) return;
+    setMotorIniciando(true);
+    setAlertaMotorApagado(false);
+
+    const nuevosLogs = [
+      `[${new Date().toLocaleTimeString()}] Ejecutando asegurarMotor()...`,
+      `[${new Date().toLocaleTimeString()}] dlsym(RTLD_DEFAULT, "TweakInit") -> OK (0x104a8210)`,
+      `[${new Date().toLocaleTimeString()}] tweakInit() invocado -> Inyectando bypass de sandbox`,
+      `[${new Date().toLocaleTimeString()}] MCMFilzaStart() -> Motor iniciado en puerto IPC interno`,
+      `[${new Date().toLocaleTimeString()}] MCMFilzaSetUnrestrictedFilesystem(1) -> Acceso irrestricto concedido`,
+      `[${new Date().toLocaleTimeString()}] ✅ ¡MOTOR ENCENDIDO! Acceso a todos los contenedores y raíz habilitado.`
+    ];
+
+    let step = 0;
+    const interval = setInterval(() => {
+      if (step < nuevosLogs.length) {
+        const logLine = nuevosLogs[step];
+        setMotorLogs(prev => [...prev, logLine]);
+        step++;
+      } else {
+        clearInterval(interval);
+        setMotorIniciando(false);
+        setMotorEncendido(true);
+      }
+    }, 200);
+  };
+
+  const apagarMotor = () => {
+    setMotorEncendido(false);
+    setMotorLogs(prev => [
+      ...prev,
+      `[${new Date().toLocaleTimeString()}] ⚠️ Motor MCMFilza APAGADO. Sandbox estándar de iOS restaurado.`
+    ]);
+  };
+
+  const toggleMotor = () => {
+    if (motorEncendido) {
+      apagarMotor();
+    } else {
+      encenderMotor();
+    }
+  };
 
   // Helper to resolve directory object for a path
   const getDirectoryAt = (path: string): FileItem | null => {
@@ -85,6 +149,11 @@ export default function App() {
   const handleOpenContainer = (bundleId: string) => {
     const trimmed = bundleId.trim();
     if (!trimmed) return;
+
+    if (!motorEncendido) {
+      setAlertaMotorApagado(true);
+      return;
+    }
 
     let app = apps.find(a => a.bundleId.toLowerCase() === trimmed.toLowerCase());
     
@@ -184,6 +253,10 @@ export default function App() {
 
   // Navigate deeper into directory
   const handleNavigateTo = (folderName: string) => {
+    if (!motorEncendido) {
+      setAlertaMotorApagado(true);
+      return;
+    }
     const nextPath = currentPath === '/' ? `/${folderName}` : `${currentPath}/${folderName}`;
     setHistory(prev => [...prev, nextPath]);
     setCurrentPath(nextPath);
@@ -212,6 +285,10 @@ export default function App() {
 
   // Open file in viewer
   const handleOpenFile = (file: FileItem, path: string) => {
+    if (!motorEncendido) {
+      setAlertaMotorApagado(true);
+      return;
+    }
     setActiveFile({ path, item: file });
     setEditedContent(file.content || '');
     if (file.name.endsWith('.plist') || file.type === 'plist') {
@@ -239,7 +316,7 @@ export default function App() {
           ...updated[path],
           content: editedContent,
           size: new Blob([editedContent]).size,
-          modifiedDate: '2026-08-19 (edited)'
+          modifiedDate: '2026-08-19 (editado)'
         };
       } else {
         // Deep search update
@@ -253,7 +330,7 @@ export default function App() {
               ...dir.children[fileName],
               content: editedContent,
               size: new Blob([editedContent]).size,
-              modifiedDate: '2026-08-19 (edited)'
+              modifiedDate: '2026-08-19 (editado)'
             };
           }
         }
@@ -369,10 +446,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] text-white flex flex-col font-mono selection:bg-[#33ff80]/30 selection:text-[#33ff80]">
-      {/* iOS-Style Navigation Bar Header */}
-      <header className="sticky top-0 z-30 bg-[#0d0e11]/95 backdrop-blur border-b border-[#22242a] px-4 py-3">
+      
+      {/* ========================================================= */}
+      {/* iOS-Style Navigation Bar Header                            */}
+      {/* ========================================================= */}
+      <header className="sticky top-0 z-30 bg-[#0d0e11]/95 backdrop-blur border-b border-[#22242a] px-3 sm:px-4 py-2.5">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 sm:space-x-3">
             {currentView !== 'appList' && (
               <button
                 id="btn-nav-back"
@@ -380,13 +460,13 @@ export default function App() {
                 className="flex items-center space-x-1 text-[#33ff80] hover:text-[#52ff94] transition px-2 py-1 rounded bg-[#1c1e24] hover:bg-[#252830] border border-[#2f333e] text-xs font-semibold"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span>Atrás</span>
+                <span className="hidden sm:inline">Atrás</span>
               </button>
             )}
             
             <div className="flex items-center space-x-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#33ff80] animate-pulse" />
-              <h1 className="text-base font-bold text-[#33ff80] tracking-tight">
+              <div className={`w-2.5 h-2.5 rounded-full ${motorEncendido ? 'bg-[#33ff80] shadow-[0_0_8px_#33ff80]' : 'bg-red-500 shadow-[0_0_8px_#ef4444]'} transition-all`} />
+              <h1 className="text-sm sm:text-base font-bold text-[#33ff80] tracking-tight">
                 {currentView === 'appList' && `MiFilza (${apps.length})`}
                 {currentView === 'browser' && (currentPath.split('/').filter(Boolean).pop() || '/')}
                 {currentView === 'viewer' && activeFile?.item.name}
@@ -394,16 +474,45 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Header Status / Navigation Shortcuts */}
+          {/* Right Header: Motor Control Button & Root Navigation */}
           <div className="flex items-center space-x-2 text-xs">
+            
+            {/* BOTÓN PARA ENCENDER / APAGAR EL MOTOR (HEADER) */}
+            <button
+              id="btn-toggle-motor-header"
+              onClick={toggleMotor}
+              disabled={motorIniciando}
+              className={`px-3 py-1.5 rounded-lg flex items-center space-x-1.5 font-bold transition shadow-sm border ${
+                motorIniciando
+                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse'
+                  : motorEncendido
+                  ? 'bg-[#33ff80]/15 text-[#33ff80] hover:bg-[#33ff80]/25 border-[#33ff80]/50 shadow-[0_0_12px_rgba(51,255,128,0.2)]'
+                  : 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border-red-500/50 animate-bounce'
+              }`}
+              title={motorEncendido ? "Motor Activo (Haz clic para apagar)" : "¡Haz clic aquí para encender el motor!"}
+            >
+              <Power className={`w-3.5 h-3.5 ${motorIniciando ? 'animate-spin' : motorEncendido ? 'text-[#33ff80]' : 'text-red-400'}`} />
+              <span className="text-[11px] sm:text-xs">
+                {motorIniciando 
+                  ? 'Iniciando...' 
+                  : motorEncendido 
+                  ? 'MOTOR: ON' 
+                  : '⚡ ENCENDER MOTOR'}
+              </span>
+            </button>
+
             <button
               id="btn-root-system"
               onClick={() => {
+                if (!motorEncendido) {
+                  setAlertaMotorApagado(true);
+                  return;
+                }
                 setCurrentPath('/');
                 setHistory(['/']);
                 setCurrentView('browser');
               }}
-              className={`px-2.5 py-1 rounded flex items-center space-x-1.5 transition border ${
+              className={`px-2.5 py-1.5 rounded flex items-center space-x-1.5 transition border ${
                 currentPath === '/' 
                   ? 'bg-[#33ff80]/20 text-[#33ff80] border-[#33ff80]/40 font-bold' 
                   : 'bg-[#15171c] text-gray-400 hover:text-white border-[#272b35]'
@@ -431,13 +540,121 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto p-3 sm:p-4 pb-16">
-        
+
+        {/* ALERTA: SI EL MOTOR ESTÁ APAGADO */}
+        {alertaMotorApagado && !motorEncendido && (
+          <div className="mb-4 bg-red-950/40 border border-red-500/60 rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs shadow-lg animate-pulse">
+            <div className="flex items-center space-x-2 text-red-200">
+              <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
+              <span>
+                <strong>¡Motor apagado!</strong> Necesitas encender el motor MCMFilza para desbloquear los contenedores de aplicaciones y el sistema de archivos irrestricto.
+              </span>
+            </div>
+            <button
+              onClick={encenderMotor}
+              className="px-3 py-1.5 bg-[#33ff80] hover:bg-[#4dff93] text-black font-bold rounded-lg flex items-center space-x-1 flex-shrink-0 transition shadow"
+            >
+              <Zap className="w-3.5 h-3.5 fill-black" />
+              <span>Encender Ahora</span>
+            </button>
+          </div>
+        )}
+
         {/* ========================================================= */}
         {/* VIEW 1: APP LIST (ViewController.m Initial Screen)         */}
         {/* ========================================================= */}
         {currentView === 'appList' && (
           <div className="space-y-4">
             
+            {/* PANEL PRINCIPAL DEL MOTOR (ASEGURARMOTOR) */}
+            <div className={`rounded-xl border transition-all duration-300 p-4 shadow-xl ${
+              motorEncendido 
+                ? 'bg-gradient-to-r from-[#101419] to-[#0f1715] border-[#33ff80]/40' 
+                : 'bg-gradient-to-r from-[#171012] to-[#141215] border-red-500/40'
+            }`}>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center border transition-all ${
+                    motorEncendido 
+                      ? 'bg-[#33ff80]/10 border-[#33ff80]/50 text-[#33ff80] shadow-[0_0_15px_rgba(51,255,128,0.25)]' 
+                      : 'bg-red-500/10 border-red-500/50 text-red-400'
+                  }`}>
+                    <Zap className={`w-6 h-6 ${motorEncendido ? 'fill-[#33ff80]' : ''}`} />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h2 className="text-sm font-bold text-white tracking-wide">
+                        MOTOR MCMFILZA (asegurarMotor)
+                      </h2>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                        motorEncendido 
+                          ? 'bg-[#33ff80]/20 text-[#33ff80] border border-[#33ff80]/40' 
+                          : 'bg-red-500/20 text-red-400 border border-red-500/40'
+                      }`}>
+                        {motorIniciando ? 'Iniciando...' : motorEncendido ? 'ACTIVO / UNRESTRICTED' : 'APAGADO'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {motorEncendido 
+                        ? 'TweakInit + MCMFilzaStart activos • Sandbox liberado' 
+                        : 'El sandbox de iOS está bloqueando el acceso a /var/mobile/Containers'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* BOTÓN PRINCIPAL DE ACCIÓN PARA ENCENDER MOTOR */}
+                <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                  <button
+                    id="btn-encender-motor-card"
+                    onClick={toggleMotor}
+                    disabled={motorIniciando}
+                    className={`flex-1 sm:flex-none px-4 py-2 rounded-lg font-bold text-xs flex items-center justify-center space-x-2 transition shadow-lg ${
+                      motorIniciando
+                        ? 'bg-amber-500 text-black animate-pulse cursor-wait'
+                        : motorEncendido
+                        ? 'bg-[#181d24] text-gray-300 hover:text-white hover:bg-[#202731] border border-[#2f384a]'
+                        : 'bg-[#33ff80] hover:bg-[#4aff91] text-black shadow-[0_0_20px_rgba(51,255,128,0.4)] scale-105'
+                    }`}
+                  >
+                    <Power className={`w-4 h-4 ${motorEncendido ? 'text-red-400' : 'text-black'}`} />
+                    <span>
+                      {motorIniciando 
+                        ? 'Iniciando Motor...' 
+                        : motorEncendido 
+                        ? 'Apagar Motor' 
+                        : '⚡ ENCENDER MOTOR'}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setMostrarLogsMotor(!mostrarLogsMotor)}
+                    className="px-2.5 py-2 rounded-lg bg-[#141720] hover:bg-[#1c212d] text-gray-400 hover:text-white border border-[#282f40] text-xs flex items-center space-x-1"
+                    title="Ver logs de ejecución del motor"
+                  >
+                    <Terminal className="w-3.5 h-3.5" />
+                    {mostrarLogsMotor ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Logs colapsables de inicialización del motor */}
+              {mostrarLogsMotor && (
+                <div className="mt-3.5 pt-3 border-t border-[#232938]">
+                  <div className="text-[11px] text-gray-400 font-mono mb-1 flex items-center justify-between">
+                    <span>Consola de enlace dinámico (dlsym):</span>
+                    <span className="text-[#33ff80]">RTLD_DEFAULT</span>
+                  </div>
+                  <div className="bg-black/80 rounded-lg p-2.5 border border-[#262c3a] max-h-36 overflow-y-auto space-y-1 text-[11px] font-mono">
+                    {motorLogs.map((log, index) => (
+                      <div key={index} className={log.includes('✅') ? 'text-[#33ff80] font-bold' : log.includes('⚠️') ? 'text-amber-400' : 'text-gray-300'}>
+                        {log}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Search / Manual Bundle ID Input */}
             <div className="bg-[#121419] rounded-xl border border-[#222631] p-3 shadow-lg">
               <form 
@@ -467,8 +684,8 @@ export default function App() {
 
               <div className="mt-2.5 flex items-center justify-between text-[11px] text-gray-400 px-1">
                 <span className="flex items-center gap-1">
-                  <Shield className="w-3 h-3 text-[#33ff80]" />
-                  MCMFilza Unrestricted Filesystem: <strong className="text-[#33ff80]">ACTIVO</strong>
+                  <Shield className={`w-3 h-3 ${motorEncendido ? 'text-[#33ff80]' : 'text-red-400'}`} />
+                  MCMFilza Unrestricted Filesystem: <strong className={motorEncendido ? 'text-[#33ff80]' : 'text-red-400'}>{motorEncendido ? 'ACTIVO' : 'INACTIVO'}</strong>
                 </span>
                 <span className="hidden sm:inline text-gray-500">Toca cualquier app para ver su contenedor</span>
               </div>
@@ -907,7 +1124,9 @@ export default function App() {
       {/* Footer Status Bar */}
       <footer className="fixed bottom-0 inset-x-0 bg-[#0d0e11] border-t border-[#1e222a] py-1 px-4 text-[10px] text-gray-500 font-mono flex items-center justify-between z-20">
         <div>iOS Sandbox & Filza Engine • Ported to Web</div>
-        <div className="text-[#33ff80]">Status: OK</div>
+        <div className={motorEncendido ? 'text-[#33ff80]' : 'text-red-400'}>
+          Motor: {motorEncendido ? 'ON (MCMFilza Unrestricted)' : 'OFF (Sandbox Bloqueado)'}
+        </div>
       </footer>
     </div>
   );
