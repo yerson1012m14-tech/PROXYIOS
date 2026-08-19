@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.elvis.mifilzapro</string>
+    <string>com.apple.mobile.MobileHouseArrest</string>
     <key>CFBundleName</key>
-    <string>MiFilzaPro</string>
+    <string>MiApp</string>
     <key>CFBundleDisplayName</key>
     <string>MiFilza Pro</string>
     <key>CFBundleExecutable</key>
