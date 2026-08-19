@@ -1,10 +1,10 @@
-name: MiApp
+name: MiFilzaPro
 options:
-  bundleIdPrefix: com.apple.mobile
+  bundleIdPrefix: com.elvis
   deploymentTarget:
     iOS: "14.0"
 targets:
-  MiApp:
+  MiFilzaPro:
     type: application
     platform: iOS
     sources:
@@ -12,5 +12,5 @@ targets:
     settings:
       base:
         INFOPLIST_FILE: MiApp/Info.plist
-        PRODUCT_BUNDLE_IDENTIFIER: com.apple.mobile.MobileHouseArrest
+        PRODUCT_BUNDLE_IDENTIFIER: com.elvis.mifilzapro
         CODE_SIGNING_ALLOWED: NO

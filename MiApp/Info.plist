@@ -3,23 +3,23 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.apple.mobile.MobileHouseArrest</string>
+    <string>com.elvis.mifilzapro</string>
     <key>CFBundleName</key>
-    <string>MiApp</string>
+    <string>MiFilzaPro</string>
     <key>CFBundleDisplayName</key>
-    <string>Mi filza</string>
+    <string>MiFilza Pro</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>2.0.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2026.08.19</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UIRequiredDeviceCapabilities</key>
-    <array><string>armv7</string></array>
+    <array><string>arm64</string></array>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>

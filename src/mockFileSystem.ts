@@ -396,8 +396,8 @@ export const INITIAL_FILE_SYSTEM: { [path: string]: FileItem } = {
         modifiedDate: '2026-08-19 00:00',
         permissions: 'drwxr-xr-x',
         children: {
-          'MiFilza.app': {
-            name: 'MiFilza.app',
+          'MiFilzaPro.app': {
+            name: 'MiFilzaPro.app',
             isDir: true,
             modifiedDate: '2026-08-19 00:00',
             permissions: 'drwxr-xr-x',
@@ -414,15 +414,17 @@ export const INITIAL_FILE_SYSTEM: { [path: string]: FileItem } = {
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>MiApp</string>
+    <string>MiFilzaPro</string>
     <key>CFBundleIdentifier</key>
-    <string>com.apple.mobile.MobileHouseArrest</string>
+    <string>com.elvis.mifilzapro</string>
     <key>CFBundleName</key>
-    <string>MiFilza</string>
+    <string>MiFilzaPro</string>
+    <key>CFBundleDisplayName</key>
+    <string>MiFilza Pro</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>2.0.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2026.08.19</string>
     <key>MinimumOSVersion</key>
     <string>14.0</string>
     <key>UIRequiredDeviceCapabilities</key>
@@ -432,14 +434,14 @@ export const INITIAL_FILE_SYSTEM: { [path: string]: FileItem } = {
 </dict>
 </plist>`
               },
-              'MiApp': {
-                name: 'MiApp',
+              'MiFilzaPro': {
+                name: 'MiFilzaPro',
                 isDir: false,
                 size: 2154200,
                 type: 'binary',
                 modifiedDate: '2026-08-19 00:00',
                 permissions: '-rwxr-xr-x',
-                content: 'cf fa ed fe 07 00 00 01 03 00 00 00 02 00 00 00\nMach-O 64-bit arm64 executable binary (MiFilza Engine)'
+                content: 'cf fa ed fe 07 00 00 01 03 00 00 00 02 00 00 00\nMach-O 64-bit arm64 executable binary (MiFilza Pro v2.0 Engine)'
               },
               'Assets.car': {
                 name: 'Assets.car',

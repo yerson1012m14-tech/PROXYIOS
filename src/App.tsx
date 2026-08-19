@@ -467,7 +467,7 @@ export default function App() {
             <div className="flex items-center space-x-2">
               <div className={`w-2.5 h-2.5 rounded-full ${motorEncendido ? 'bg-[#33ff80] shadow-[0_0_8px_#33ff80]' : 'bg-red-500 shadow-[0_0_8px_#ef4444]'} transition-all`} />
               <h1 className="text-sm sm:text-base font-bold text-[#33ff80] tracking-tight">
-                {currentView === 'appList' && `MiFilza (${apps.length})`}
+                {currentView === 'appList' && `MiFilza Pro v2.0 (${apps.length})`}
                 {currentView === 'browser' && (currentPath.split('/').filter(Boolean).pop() || '/')}
                 {currentView === 'viewer' && activeFile?.item.name}
               </h1>
@@ -1123,7 +1123,7 @@ export default function App() {
 
       {/* Footer Status Bar */}
       <footer className="fixed bottom-0 inset-x-0 bg-[#0d0e11] border-t border-[#1e222a] py-1 px-4 text-[10px] text-gray-500 font-mono flex items-center justify-between z-20">
-        <div>iOS Sandbox & Filza Engine • Ported to Web</div>
+        <div>MiFilza Pro v2.0 (com.elvis.mifilzapro) • Unrestricted Engine</div>
         <div className={motorEncendido ? 'text-[#33ff80]' : 'text-red-400'}>
           Motor: {motorEncendido ? 'ON (MCMFilza Unrestricted)' : 'OFF (Sandbox Bloqueado)'}
         </div>
