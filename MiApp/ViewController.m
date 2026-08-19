@@ -17,38 +17,34 @@ static NSString *fmtSize(unsigned long long b) {
     return [NSString stringWithFormat:@"%.2f GB", b / (1024.0 * 1024.0 * 1024.0)];
 }
 
-static void ponerIcono(UITableViewCell *c, NSString *nombre, UIColor *tinte) {
-    if (@available(iOS 13.0, *)) {
-        c.imageView.image = [[UIImage systemImageNamed:nombre] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-        c.imageView.tintColor = tinte;
-    }
-}
-
-#pragma mark - Visor de texto y Hex Dump
-@interface TextViewVC : UIViewController
+#pragma mark - Visor de Texto y Hex (Filza Editor)
+@interface VisorArchivoVC : UIViewController
 @property (nonatomic, strong) NSString *ruta;
 @property (nonatomic, strong) UITextView *tv;
 @property (nonatomic, strong) UISegmentedControl *segmento;
-@property (nonatomic, strong) NSString *contenidoOriginal;
-@property (nonatomic, assign) unsigned long long tamanoArchivo;
+@property (nonatomic, strong) NSString *contenidoTexto;
+@property (nonatomic, assign) unsigned long long tamano;
 @end
 
-@implementation TextViewVC
+@implementation VisorArchivoVC
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor systemBackgroundColor];
     self.title = self.ruta.lastPathComponent;
 
     NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:self.ruta error:nil];
-    self.tamanoArchivo = [[attrs objectForKey:@"NSFileSize"] unsignedLongLongValue];
+    self.tamano = [[attrs objectForKey:@"NSFileSize"] unsignedLongLongValue];
 
     NSData *d = [NSData dataWithContentsOfFile:self.ruta];
-    self.contenidoOriginal = d ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : nil;
+    self.contenidoTexto = d ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : nil;
 
     self.segmento = [[UISegmentedControl alloc] initWithItems:@[@"Texto", @"Hex"]];
     self.segmento.selectedSegmentIndex = 0;
     [self.segmento addTarget:self action:@selector(cambioModo) forControlEvents:UIControlEventValueChanged];
     self.navigationItem.titleView = self.segmento;
+
+    UIBarButtonItem *btnCompartir = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(compartir)];
+    self.navigationItem.rightBarButtonItem = btnCompartir;
 
     self.tv = [[UITextView alloc] initWithFrame:self.view.bounds];
     self.tv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -56,71 +52,107 @@ static void ponerIcono(UITableViewCell *c, NSString *nombre, UIColor *tinte) {
     self.tv.textColor = [UIColor labelColor];
     self.tv.backgroundColor = [UIColor systemBackgroundColor];
     self.tv.font = [UIFont fontWithName:@"Menlo" size:12] ?: [UIFont systemFontOfSize:12];
-    self.tv.contentInset = UIEdgeInsetsMake(12, 12, 12, 12);
+    self.tv.contentInset = UIEdgeInsetsMake(10, 12, 10, 12);
     [self.view addSubview:self.tv];
 
-    [self actualizarTexto];
+    [self refrescar];
+}
+
+- (void)compartir {
+    NSURL *url = [NSURL fileURLWithPath:self.ruta];
+    UIActivityViewController *act = [[UIActivityViewController alloc] initWithActivityItems:@[url] applicationActivities:nil];
+    [self presentViewController:act animated:YES completion:nil];
 }
 
 - (void)cambioModo {
-    [self actualizarTexto];
+    [self refrescar];
 }
 
-- (void)actualizarTexto {
+- (void)refrescar {
     if (self.segmento.selectedSegmentIndex == 0) {
-        if (self.tamanoArchivo > 2 * 1024 * 1024) {
-            self.tv.text = [NSString stringWithFormat:@"(Archivo demasiado grande: %@)", fmtSize(self.tamanoArchivo)];
+        if (self.tamano > 2 * 1024 * 1024) {
+            self.tv.text = [NSString stringWithFormat:@"(Archivo grande: %@. Usa visor externo si es necesario)", fmtSize(self.tamano)];
         } else {
-            self.tv.text = self.contenidoOriginal ?: [NSString stringWithFormat:@"(Archivo binario o no codificable en UTF-8, %@)", fmtSize(self.tamanoArchivo)];
+            self.tv.text = self.contenidoTexto ?: [NSString stringWithFormat:@"(Archivo binario o datos no UTF-8: %@)", fmtSize(self.tamano)];
         }
     } else {
         NSData *d = [NSData dataWithContentsOfFile:self.ruta];
         if (!d) {
-            self.tv.text = @"(No se pudo leer el archivo)";
+            self.tv.text = @"(Error al leer datos binarios)";
             return;
         }
         NSUInteger len = MIN(d.length, (NSUInteger)2048);
         const unsigned char *bytes = d.bytes;
-        NSMutableString *hexStr = [NSMutableString new];
-        [hexStr appendFormat:@"// Offset: Hex Bytes  | ASCII (%@ total)\n\n", fmtSize(self.tamanoArchivo)];
+        NSMutableString *s = [NSMutableString new];
+        [s appendFormat:@"// Offset: Hex Bytes  | ASCII (%@)\n\n", fmtSize(self.tamano)];
         for (NSUInteger i = 0; i < len; i += 16) {
-            [hexStr appendFormat:@"%08lx: ", (unsigned long)i];
+            [s appendFormat:@"%08lx: ", (unsigned long)i];
             for (NSUInteger j = 0; j < 16; j++) {
-                if (i + j < len) {
-                    [hexStr appendFormat:@"%02x ", bytes[i + j]];
-                } else {
-                    [hexStr appendString:@"   "];
-                }
-                if (j == 7) [hexStr appendString:@" "];
+                if (i + j < len) [s appendFormat:@"%02x ", bytes[i + j]];
+                else [s appendString:@"   "];
+                if (j == 7) [s appendString:@" "];
             }
-            [hexStr appendString:@" |"];
+            [s appendString:@" |"];
             for (NSUInteger j = 0; j < 16 && (i + j) < len; j++) {
                 unsigned char c = bytes[i + j];
-                [hexStr appendFormat:@"%c", (c >= 32 && c <= 126) ? c : '.'];
+                [s appendFormat:@"%c", (c >= 32 && c <= 126) ? c : '.'];
             }
-            [hexStr appendString:@"|\n"];
+            [s appendString:@"|\n"];
         }
-        self.tv.text = hexStr;
+        self.tv.text = s;
     }
 }
 @end
 
-#pragma mark - Navegador de carpetas (Filza Explorer)
-@interface FileBrowserVC : UIViewController <UITableViewDataSource, UITableViewDelegate>
-@property (nonatomic, strong) NSString *ruta;
-@property (nonatomic, strong) NSArray *items;
+#pragma mark - Pantalla Principal: Explorador Filza Completo
+@interface ViewController () <UITableViewDataSource, UITableViewDelegate, UISearchResultsUpdating>
+@property (nonatomic, strong) NSString *rutaActual;
 @property (nonatomic, strong) UITableView *tv;
+@property (nonatomic, strong) NSArray *elementos;
+@property (nonatomic, strong) NSArray *elementosFiltrados;
+@property (nonatomic, strong) UISearchController *searchController;
 @end
 
-@implementation FileBrowserVC
+@implementation ViewController
+
+- (instancetype)initWithPath:(NSString *)ruta {
+    self = [super init];
+    if (self) {
+        _rutaActual = ruta.length ? ruta : @"/var/mobile";
+    }
+    return self;
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
+    
+    // Iniciar motor automáticamente
+    asegurarMotor();
+    
+    if (!self.rutaActual.length) {
+        self.rutaActual = @"/var/mobile";
+    }
+
     self.view.backgroundColor = [UIColor systemBackgroundColor];
-    self.title = self.ruta.lastPathComponent.length ? self.ruta.lastPathComponent : @"/";
+    [self actualizarTitulo];
 
-    UIBarButtonItem *btnNuevo = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(crearElemento)];
-    self.navigationItem.rightBarButtonItem = btnNuevo;
+    // Barra de navegación: Botón de Motor y Botón + (Crear)
+    UIBarButtonItem *btnMotor = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"bolt.fill"] style:UIBarButtonItemStylePlain target:self action:@selector(tocarMotor)];
+    btnMotor.tintColor = [UIColor systemGreenColor];
 
+    UIBarButtonItem *btnNuevo = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(crearNuevo)];
+    self.navigationItem.rightBarButtonItems = @[btnNuevo, btnMotor];
+
+    // Search Controller nativo estándar de iOS
+    self.searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
+    self.searchController.searchResultsUpdater = self;
+    self.searchController.obscuresBackgroundDuringPresentation = NO;
+    self.searchController.searchBar.placeholder = @"Buscar archivos o escribir /ruta...";
+    self.navigationItem.searchController = self.searchController;
+    self.navigationItem.hidesSearchBarWhenScrolling = NO;
+    self.definesPresentationContext = YES;
+
+    // Tabla estilo Filza estándar
     self.tv = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
     self.tv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tv.backgroundColor = [UIColor systemBackgroundColor];
@@ -128,12 +160,181 @@ static void ponerIcono(UITableViewCell *c, NSString *nombre, UIColor *tinte) {
     self.tv.delegate = self;
     [self.view addSubview:self.tv];
 
-    [self recargar];
+    // Toolbar inferior estilo Filza
+    [self configurarToolbarInferior];
+
+    [self cargarDirectorio];
 }
 
-- (void)crearElemento {
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    self.navigationController.toolbarHidden = NO;
+    [self cargarDirectorio];
+}
+
+- (void)actualizarTitulo {
+    if ([self.rutaActual isEqualToString:@"/"]) {
+        self.title = @"/";
+    } else {
+        self.title = self.rutaActual.lastPathComponent;
+    }
+}
+
+- (void)configurarToolbarInferior {
+    UIBarButtonItem *btnRoot = [[UIBarButtonItem alloc] initWithTitle:@"Raíz /" style:UIBarButtonItemStylePlain target:self action:@selector(irARaiz)];
+    UIBarButtonItem *btnSpace1 = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+    
+    UIBarButtonItem *btnContainers = [[UIBarButtonItem alloc] initWithTitle:@"Apps" style:UIBarButtonItemStylePlain target:self action:@selector(abrirSelectorApps)];
+    UIBarButtonItem *btnSpace2 = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+    
+    UIBarButtonItem *btnMobile = [[UIBarButtonItem alloc] initWithTitle:@"Mobile" style:UIBarButtonItemStylePlain target:self action:@selector(irAMobile)];
+    UIBarButtonItem *btnSpace3 = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+
+    UIBarButtonItem *btnRutaManual = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"] style:UIBarButtonItemStylePlain target:self action:@selector(escribirRutaManual)];
+
+    self.toolbarItems = @[btnRoot, btnSpace1, btnContainers, btnSpace2, btnMobile, btnSpace3, btnRutaManual];
+    self.navigationController.toolbar.tintColor = [UIColor systemGreenColor];
+}
+
+- (void)cargarDirectorio {
+    asegurarMotor();
+    NSMutableArray *dirs = [NSMutableArray new], *files = [NSMutableArray new];
+    NSError *err = nil;
+    NSArray *contents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:self.rutaActual error:&err];
+
+    if (!contents && ![self.rutaActual isEqualToString:@"/var/mobile"]) {
+        // Si no se puede abrir /var/mobile directamente, probar /
+        contents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:@"/" error:nil];
+        if (contents) {
+            self.rutaActual = @"/";
+            [self actualizarTitulo];
+        }
+    }
+
+    for (NSString *n in [contents sortedArrayUsingSelector:@selector(localizedStandardCompare:)]) {
+        BOOL isDir = NO;
+        NSString *full = [self.rutaActual stringByAppendingPathComponent:n];
+        [[NSFileManager defaultManager] fileExistsAtPath:full isDirectory:&isDir];
+        if (isDir) {
+            [dirs addObject:n];
+        } else {
+            [files addObject:n];
+        }
+    }
+
+    NSMutableArray *res = [NSMutableArray new];
+    [res addObjectsFromArray:dirs];
+    [res addObjectsFromArray:files];
+    self.elementos = res;
+    self.elementosFiltrados = res;
+    [self.tv reloadData];
+}
+
+- (void)tocarMotor {
+    asegurarMotor();
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"⚡ Motor MCMFilza"
+        message:@"El motor está activo y funcionando.\nAcceso irrestricto al sistema de archivos."
+        preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)irARaiz {
+    [self navegarHaciaRuta:@"/"];
+}
+
+- (void)irAMobile {
+    [self navegarHaciaRuta:@"/var/mobile"];
+}
+
+- (void)abrirSelectorApps {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Contenedores de Apps"
+        message:@"Selecciona o escribe el bundle ID:"
+        preferredStyle:UIAlertControllerStyleActionSheet];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"Abrir /Containers/Data/Application" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        [self navegarHaciaRuta:@"/var/mobile/Containers/Data/Application"];
+    }]];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"Abrir /Bundle/Application" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        [self navegarHaciaRuta:@"/var/containers/Bundle/Application"];
+    }]];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"Free Fire (com.dts.freefireth)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        [self abrirBundleId:@"com.dts.freefireth"];
+    }]];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"Escribir Bundle ID manual..." style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        [self escribirBundleIdManual];
+    }]];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancelar" style:UIAlertActionStyleCancel handler:nil]];
+
+    // Compatibilidad iPad
+    if (a.popoverPresentationController) {
+        a.popoverPresentationController.barButtonItem = self.toolbarItems[2];
+    }
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)escribirBundleIdManual {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Bundle ID"
+        message:@"Escribe el bundle ID de la app instalada (ej: com.dts.freefireth)"
+        preferredStyle:UIAlertControllerStyleAlert];
+    [a addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.placeholder = @"com.ejemplo.app";
+        tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    }];
+    [a addAction:[UIAlertAction actionWithTitle:@"Abrir" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        NSString *bid = a.textFields.firstObject.text;
+        [self abrirBundleId:bid];
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancelar" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)abrirBundleId:(NSString *)bid {
+    bid = [bid stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if (!bid.length) return;
+    asegurarMotor();
+    NSString *p = nil;
+    @try { p = containerPath(bid); } @catch (NSException *e) { p = nil; }
+    if (p.length) {
+        [self navegarHaciaRuta:p];
+    } else {
+        [self navegarHaciaRuta:@"/var/mobile/Containers/Data/Application"];
+    }
+}
+
+- (void)escribirRutaManual {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Ir a la ruta"
+        message:@"Escribe cualquier ruta del sistema de archivos:"
+        preferredStyle:UIAlertControllerStyleAlert];
+    [a addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.text = self.rutaActual;
+        tf.font = [UIFont fontWithName:@"Menlo" size:12];
+        tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    }];
+    [a addAction:[UIAlertAction actionWithTitle:@"Ir" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        NSString *r = a.textFields.firstObject.text;
+        if (r.length) [self navegarHaciaRuta:r];
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancelar" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)navegarHaciaRuta:(NSString *)nuevaRuta {
+    if ([nuevaRuta isEqualToString:self.rutaActual]) {
+        [self cargarDirectorio];
+        return;
+    }
+    ViewController *vc = [[ViewController alloc] initWithPath:nuevaRuta];
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)crearNuevo {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Nuevo Elemento"
-        message:self.ruta
+        message:self.rutaActual
         preferredStyle:UIAlertControllerStyleAlert];
     [a addTextFieldWithConfigurationHandler:^(UITextField *tf) {
         tf.placeholder = @"Nombre";
@@ -141,281 +342,86 @@ static void ponerIcono(UITableViewCell *c, NSString *nombre, UIColor *tinte) {
     [a addAction:[UIAlertAction actionWithTitle:@"Carpeta" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
         NSString *n = a.textFields.firstObject.text;
         if (n.length) {
-            [[NSFileManager defaultManager] createDirectoryAtPath:[self.ruta stringByAppendingPathComponent:n] withIntermediateDirectories:YES attributes:nil error:nil];
-            [self recargar];
+            NSString *nueva = [self.rutaActual stringByAppendingPathComponent:n];
+            [[NSFileManager defaultManager] createDirectoryAtPath:nueva withIntermediateDirectories:YES attributes:nil error:nil];
+            [self cargarDirectorio];
         }
     }]];
     [a addAction:[UIAlertAction actionWithTitle:@"Archivo" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
         NSString *n = a.textFields.firstObject.text;
         if (n.length) {
-            [[NSFileManager defaultManager] createFileAtPath:[self.ruta stringByAppendingPathComponent:n] contents:[@"" dataUsingEncoding:NSUTF8StringEncoding] attributes:nil];
-            [self recargar];
+            NSString *nueva = [self.rutaActual stringByAppendingPathComponent:n];
+            [[NSFileManager defaultManager] createFileAtPath:nueva contents:[@"" dataUsingEncoding:NSUTF8StringEncoding] attributes:nil];
+            [self cargarDirectorio];
         }
     }]];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancelar" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:a animated:YES completion:nil];
 }
 
-- (void)recargar {
-    NSMutableArray *dirs = [NSMutableArray new], *files = [NSMutableArray new];
-    NSArray *all = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:self.ruta error:nil];
-    for (NSString *n in [all sortedArrayUsingSelector:@selector(localizedStandardCompare:)]) {
-        BOOL isDir = NO;
-        [[NSFileManager defaultManager] fileExistsAtPath:[self.ruta stringByAppendingPathComponent:n] isDirectory:&isDir];
-        if (isDir) { [dirs addObject:n]; } else { [files addObject:n]; }
-    }
-    NSMutableArray *fin = [NSMutableArray new];
-    if (![self.ruta isEqualToString:@"/"]) [fin addObject:@".."];
-    [fin addObjectsFromArray:dirs];
-    [fin addObjectsFromArray:files];
-    self.items = fin;
-    [self.tv reloadData];
-}
+#pragma mark - Search Updater
 
-- (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s { return self.items.count; }
-- (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)ip {
-    UITableViewCell *c = [t dequeueReusableCellWithIdentifier:@"c"];
-    if (!c) c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"c"];
-    
-    NSString *n = self.items[ip.row];
-    c.textLabel.text = n;
-    c.textLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
-    c.detailTextLabel.font = [UIFont systemFontOfSize:12];
-    c.detailTextLabel.textColor = [UIColor secondaryLabelColor];
-
-    if ([n isEqualToString:@".."]) {
-        ponerIcono(c, @"arrow.left.circle.fill", [UIColor systemGrayColor]);
-        c.textLabel.textColor = [UIColor secondaryLabelColor];
-        c.detailTextLabel.text = @"Directorio superior";
-        c.accessoryType = UITableViewCellAccessoryNone;
-    } else if ([self esDir:n]) {
-        ponerIcono(c, @"folder.fill", [UIColor systemBlueColor]);
-        c.textLabel.textColor = [UIColor labelColor];
-        c.detailTextLabel.text = @"Carpeta";
-        c.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-    } else {
-        NSString *ext = [n.pathExtension lowercaseString];
-        if ([ext isEqualToString:@"plist"]) {
-            ponerIcono(c, @"list.bullet.rectangle.portrait.fill", [UIColor systemOrangeColor]);
-        } else if ([ext isEqualToString:@"sqlite"] || [ext isEqualToString:@"db"]) {
-            ponerIcono(c, @"cylinder.split.1x2.fill", [UIColor systemPurpleColor]);
-        } else if ([ext isEqualToString:@"dylib"] || [ext isEqualToString:@"dat"] || [ext isEqualToString:@"bin"]) {
-            ponerIcono(c, @"cpu.fill", [UIColor systemGreenColor]);
-        } else if ([ext isEqualToString:@"png"] || [ext isEqualToString:@"jpg"] || [ext isEqualToString:@"jpeg"] || [ext isEqualToString:@"car"]) {
-            ponerIcono(c, @"photo.fill", [UIColor systemTealColor]);
-        } else {
-            ponerIcono(c, @"doc.text.fill", [UIColor systemGrayColor]);
-        }
-        c.textLabel.textColor = [UIColor labelColor];
-        NSDictionary *a = [[NSFileManager defaultManager] attributesOfItemAtPath:[self.ruta stringByAppendingPathComponent:n] error:nil];
-        c.detailTextLabel.text = fmtSize([[a objectForKey:@"NSFileSize"] unsignedLongLongValue]);
-        c.accessoryType = UITableViewCellAccessoryNone;
-    }
-    return c;
-}
-
-- (BOOL)esDir:(NSString *)n {
-    BOOL isDir = NO;
-    [[NSFileManager defaultManager] fileExistsAtPath:[self.ruta stringByAppendingPathComponent:n] isDirectory:&isDir];
-    return isDir;
-}
-
-- (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)ip {
-    [t deselectRowAtIndexPath:ip animated:YES];
-    NSString *n = self.items[ip.row];
-    if ([n isEqualToString:@".."]) { [self.navigationController popViewControllerAnimated:YES]; return; }
-    NSString *full = [self.ruta stringByAppendingPathComponent:n];
-    if ([self esDir:n]) {
-        FileBrowserVC *fb = [FileBrowserVC new];
-        fb.ruta = full;
-        [self.navigationController pushViewController:fb animated:YES];
-    } else {
-        TextViewVC *tv = [TextViewVC new];
-        tv.ruta = full;
-        [self.navigationController pushViewController:tv animated:YES];
-    }
-}
-
-- (BOOL)tableView:(UITableView *)t canEditRowAtIndexPath:(NSIndexPath *)ip {
-    return ![self.items[ip.row] isEqualToString:@".."];
-}
-
-- (void)tableView:(UITableView *)t commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)ip {
-    if (editingStyle == UITableViewCellEditingStyleDelete) {
-        NSString *n = self.items[ip.row];
-        NSString *full = [self.ruta stringByAppendingPathComponent:n];
-        [[NSFileManager defaultManager] removeItemAtPath:full error:nil];
-        [self recargar];
-    }
-}
-@end
-
-#pragma mark - Pantalla Principal (Estilo Filza Limpio y Nativo)
-@interface ViewController () <UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate>
-@property (nonatomic, strong) UITableView *tv;
-@property (nonatomic, strong) UISearchBar *searchBar;
-@property (nonatomic, strong) NSMutableArray *apps;
-@property (nonatomic, strong) NSMutableArray *appsFiltradas;
-@property (nonatomic, strong) NSArray *accesosRapidos;
-@end
-
-@implementation ViewController
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
-    self.title = @"MiFilza";
-
-    // Botón discreto y elegante del motor en la barra superior
-    UIBarButtonItem *btnMotor = [[UIBarButtonItem alloc] initWithTitle:@"⚡ Motor" style:UIBarButtonItemStylePlain target:self action:@selector(accionMotor)];
-    btnMotor.tintColor = [UIColor systemGreenColor];
-    self.navigationItem.rightBarButtonItem = btnMotor;
-
-    self.accesosRapidos = @[
-        @{@"titulo": @"Raíz del Sistema ( / )", @"sub": @"Acceso irrestricto sin sandbox", @"ruta": @"/", @"icono": @"internaldrive.fill", @"color": [UIColor systemGreenColor]},
-        @{@"titulo": @"Contenedores de Apps", @"sub": @"/var/mobile/Containers/Data/Application", @"ruta": @"/var/mobile/Containers/Data/Application", @"icono": @"shippingbox.fill", @"color": [UIColor systemBlueColor]},
-        @{@"titulo": @"Documentos", @"sub": @"/var/mobile/Documents", @"ruta": @"/var/mobile/Documents", @"icono": @"folder.fill", @"color": [UIColor systemOrangeColor]},
-        @{@"titulo": @"Preferencias (.plist)", @"sub": @"/var/mobile/Library/Preferences", @"ruta": @"/var/mobile/Library/Preferences", @"icono": @"gearshape.fill", @"color": [UIColor systemPurpleColor]}
-    ];
-
-    self.apps = [NSMutableArray new];
-    self.appsFiltradas = [NSMutableArray new];
-
-    [self configurarUI];
-    [self cargarApps];
-}
-
-- (void)configurarUI {
-    self.tv = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
-    self.tv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.tv.backgroundColor = [UIColor systemGroupedBackgroundColor];
-    self.tv.dataSource = self;
-    self.tv.delegate = self;
-
-    // Search bar nativa limpia
-    self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 56)];
-    self.searchBar.delegate = self;
-    self.searchBar.placeholder = @"Buscar o escribir bundle ID...";
-    self.searchBar.searchBarStyle = UISearchBarStyleMinimal;
-    self.searchBar.autocapitalizationType = UITextAutocapitalizationTypeNone;
-    self.searchBar.autocorrectionType = UITextAutocorrectionTypeNo;
-    self.tv.tableHeaderView = self.searchBar;
-
-    [self.view addSubview:self.tv];
-}
-
-- (void)cargarApps {
-    NSMutableOrderedSet *set = [NSMutableOrderedSet new];
-    @try {
-        Class ws = NSClassFromString(@"LSApplicationWorkspace");
-        if (ws && [ws respondsToSelector:@selector(defaultWorkspace)]) {
-            id workspace = [ws performSelector:@selector(defaultWorkspace)];
-            if (workspace && [workspace respondsToSelector:@selector(allApplications)]) {
-                NSArray *all = [workspace performSelector:@selector(allApplications)];
-                for (id proxy in all) {
-                    @try {
-                        if ([proxy respondsToSelector:@selector(applicationIdentifier)]) {
-                            NSString *bid = [proxy performSelector:@selector(applicationIdentifier)];
-                            if (bid && ![bid hasPrefix:@"com.apple."]) [set addObject:bid];
-                        }
-                    } @catch (NSException *e) {}
-                }
-            }
-        }
-    } @catch (NSException *e) {}
-
-    // Si el workspace está restringido por sandbox, añadir aplicaciones estándar
-    if (set.count == 0) {
-        NSArray *comunes = @[
-            @"com.dts.freefireth",
-            @"com.spotify.client",
-            @"org.videolan.vlc-ios",
-            @"com.tinyspeck.chatlyio",
-            @"com.toyopagroup.picaboo",
-            @"com.burbn.instagram",
-            @"com.google.ios.youtube",
-            @"com.agilebits.onepassword-ios"
-        ];
-        [set addObjectsFromArray:comunes];
-    }
-
-    [self.apps removeAllObjects];
-    [self.apps addObjectsFromArray:[set array]];
-    [self.apps sortUsingSelector:@selector(localizedStandardCompare:)];
-    
-    [self.appsFiltradas removeAllObjects];
-    [self.appsFiltradas addObjectsFromArray:self.apps];
-
-    [self.tv reloadData];
-}
-
-- (void)accionMotor {
-    asegurarMotor();
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Motor MCMFilza"
-        message:@"El motor está activo.\nTweakInit y MCMFilzaStart funcionando con bypass de sandbox."
-        preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:a animated:YES completion:nil];
-}
-
-#pragma mark - Search Bar Delegate
-
-- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
-    NSString *t = [searchText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+- (void)updateSearchResultsForSearchController:(UISearchController *)searchController {
+    NSString *t = [searchController.searchBar.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
     if (t.length == 0) {
-        [self.appsFiltradas removeAllObjects];
-        [self.appsFiltradas addObjectsFromArray:self.apps];
+        self.elementosFiltrados = self.elementos;
     } else {
         NSPredicate *pred = [NSPredicate predicateWithFormat:@"SELF contains[cd] %@", t];
-        self.appsFiltradas = [NSMutableArray arrayWithArray:[self.apps filteredArrayUsingPredicate:pred]];
+        self.elementosFiltrados = [self.elementos filteredArrayUsingPredicate:pred];
     }
     [self.tv reloadData];
-}
-
-- (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
-    [searchBar resignFirstResponder];
-    NSString *texto = [searchBar.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    if (texto.length) {
-        [self abrirContenedor:texto];
-    }
 }
 
 #pragma mark - Table View Data Source & Delegate
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)t {
-    return 2;
-}
-
-- (NSString *)tableView:(UITableView *)t titleForHeaderInSection:(NSInteger)s {
-    return (s == 0) ? @"ACCESOS DIRECTOS" : [NSString stringWithFormat:@"APLICACIONES (%lu)", (unsigned long)self.appsFiltradas.count];
-}
-
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s {
-    return (s == 0) ? self.accesosRapidos.count : self.appsFiltradas.count;
+    return self.elementosFiltrados.count;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)ip {
-    UITableViewCell *c = [t dequeueReusableCellWithIdentifier:@"cell"];
-    if (!c) c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"cell"];
+    UITableViewCell *c = [t dequeueReusableCellWithIdentifier:@"fcell"];
+    if (!c) c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"fcell"];
 
-    if (ip.section == 0) {
-        NSDictionary *dict = self.accesosRapidos[ip.row];
-        c.textLabel.text = dict[@"titulo"];
+    NSString *n = self.elementosFiltrados[ip.row];
+    NSString *full = [self.rutaActual stringByAppendingPathComponent:n];
+    BOOL isDir = NO;
+    [[NSFileManager defaultManager] fileExistsAtPath:full isDirectory:&isDir];
+
+    c.textLabel.text = n;
+    c.textLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
+
+    if (isDir) {
+        c.imageView.image = [[UIImage systemImageNamed:@"folder.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        c.imageView.tintColor = [UIColor systemBlueColor];
         c.textLabel.textColor = [UIColor labelColor];
-        c.textLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
-        c.detailTextLabel.text = dict[@"sub"];
+        c.detailTextLabel.text = @"Carpeta";
         c.detailTextLabel.textColor = [UIColor secondaryLabelColor];
-        ponerIcono(c, dict[@"icono"], dict[@"color"]);
         c.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else {
-        NSString *bid = self.appsFiltradas[ip.row];
-        c.textLabel.text = bid;
+        NSString *ext = [n.pathExtension lowercaseString];
+        if ([ext isEqualToString:@"plist"]) {
+            c.imageView.image = [[UIImage systemImageNamed:@"list.bullet.rectangle.portrait.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+            c.imageView.tintColor = [UIColor systemOrangeColor];
+        } else if ([ext isEqualToString:@"sqlite"] || [ext isEqualToString:@"db"]) {
+            c.imageView.image = [[UIImage systemImageNamed:@"cylinder.split.1x2.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+            c.imageView.tintColor = [UIColor systemPurpleColor];
+        } else if ([ext isEqualToString:@"dylib"] || [ext isEqualToString:@"dat"] || [ext isEqualToString:@"bin"]) {
+            c.imageView.image = [[UIImage systemImageNamed:@"cpu.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+            c.imageView.tintColor = [UIColor systemGreenColor];
+        } else if ([ext isEqualToString:@"png"] || [ext isEqualToString:@"jpg"] || [ext isEqualToString:@"jpeg"] || [ext isEqualToString:@"car"]) {
+            c.imageView.image = [[UIImage systemImageNamed:@"photo.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+            c.imageView.tintColor = [UIColor systemTealColor];
+        } else {
+            c.imageView.image = [[UIImage systemImageNamed:@"doc.text.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+            c.imageView.tintColor = [UIColor systemGrayColor];
+        }
+        
         c.textLabel.textColor = [UIColor labelColor];
-        c.textLabel.font = [UIFont fontWithName:@"Menlo" size:13] ?: [UIFont systemFontOfSize:13];
-        c.detailTextLabel.text = @"Toca para explorar contenedor";
+        NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:full error:nil];
+        unsigned long long sz = [[attrs objectForKey:@"NSFileSize"] unsignedLongLongValue];
+        c.detailTextLabel.text = fmtSize(sz);
         c.detailTextLabel.textColor = [UIColor secondaryLabelColor];
-        ponerIcono(c, @"app.fill", [UIColor systemBlueColor]);
-        c.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        c.accessoryType = UITableViewCellAccessoryNone;
     }
 
     return c;
@@ -423,36 +429,31 @@ static void ponerIcono(UITableViewCell *c, NSString *nombre, UIColor *tinte) {
 
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)ip {
     [t deselectRowAtIndexPath:ip animated:YES];
-    if (ip.section == 0) {
-        NSDictionary *dict = self.accesosRapidos[ip.row];
-        FileBrowserVC *fb = [FileBrowserVC new];
-        fb.ruta = dict[@"ruta"];
-        [self.navigationController pushViewController:fb animated:YES];
+    NSString *n = self.elementosFiltrados[ip.row];
+    NSString *full = [self.rutaActual stringByAppendingPathComponent:n];
+    BOOL isDir = NO;
+    [[NSFileManager defaultManager] fileExistsAtPath:full isDirectory:&isDir];
+
+    if (isDir) {
+        [self navegarHaciaRuta:full];
     } else {
-        [self abrirContenedor:self.appsFiltradas[ip.row]];
+        VisorArchivoVC *v = [VisorArchivoVC new];
+        v.ruta = full;
+        [self.navigationController pushViewController:v animated:YES];
     }
 }
 
-- (void)abrirContenedor:(NSString *)bid {
-    bid = [bid stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    if (!bid.length) return;
-    asegurarMotor();
-    
-    NSString *p = nil;
-    @try { p = containerPath(bid); } @catch (NSException *e) { p = nil; }
-    
-    if (!p) {
-        // Buscar carpeta manual por nombre si MCM no devuelve UUID
-        NSString *containersGeneral = @"/var/mobile/Containers/Data/Application";
-        FileBrowserVC *fb = [FileBrowserVC new];
-        fb.ruta = containersGeneral;
-        [self.navigationController pushViewController:fb animated:YES];
-        return;
+- (BOOL)tableView:(UITableView *)t canEditRowAtIndexPath:(NSIndexPath *)ip {
+    return YES;
+}
+
+- (void)tableView:(UITableView *)t commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)ip {
+    if (editingStyle == UITableViewCellEditingStyleDelete) {
+        NSString *n = self.elementosFiltrados[ip.row];
+        NSString *full = [self.rutaActual stringByAppendingPathComponent:n];
+        [[NSFileManager defaultManager] removeItemAtPath:full error:nil];
+        [self cargarDirectorio];
     }
-    
-    FileBrowserVC *fb = [FileBrowserVC new];
-    fb.ruta = p;
-    [self.navigationController pushViewController:fb animated:YES];
 }
 
 @end
