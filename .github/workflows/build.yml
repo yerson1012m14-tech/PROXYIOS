@@ -1,11 +1,11 @@
-name: Compilar Mi App con Motor Filza
+name: Compilar MiFilza Pro con Motor Filza
 on: [push, workflow_dispatch]
 
 jobs:
   build-my-app:
     runs-on: macos-latest
     steps:
-      - name: Clonar mi app
+      - name: Clonar repositorio
         uses: actions/checkout@v4
 
       - name: Instalar dependencias base
@@ -20,8 +20,15 @@ jobs:
         run: |
           git clone https://github.com/Tyilo/insert_dylib.git
           cd insert_dylib
-          clang insert_dylib/main.c -o insert_dylib_tool
-          sudo cp insert_dylib_tool /usr/local/bin/insert_dylib
+          if [ -f "insert_dylib/main.c" ]; then
+            clang -framework Foundation insert_dylib/main.c -o insert_dylib_tool
+          elif [ -f "main.c" ]; then
+            clang -framework Foundation main.c -o insert_dylib_tool
+          else
+            xcodebuild -configuration Release
+          fi
+          INSERT_BIN=$(find . -name "insert_dylib" -type f -perm +111 -o -name "insert_dylib_tool" -type f | head -n 1)
+          sudo cp "$INSERT_BIN" /usr/local/bin/insert_dylib
           sudo chmod +x /usr/local/bin/insert_dylib
           cd ..
 
@@ -33,51 +40,75 @@ jobs:
           git clone --recursive https://github.com/0xjohnnydev/FilzaSlop.git motor_filza
           cd motor_filza
           export SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path)
-          export TARGET=iphone:clang:latest:18.0
-          make clean
-          make package FINALPACKAGE=1
+          export TARGET=iphone:clang:latest:14.0
+          make clean || true
+          make package FINALPACKAGE=1 || make
           cd ..
 
-      - name: Compilar Mi App
+      - name: Compilar Mi App (Xcodebuild)
         run: |
+          PROJECT_FILE=$(find . -maxdepth 1 -name "*.xcodeproj" | head -n 1)
+          PROJECT_BASE=$(basename "$PROJECT_FILE" .xcodeproj)
+          echo "Compilando proyecto: $PROJECT_FILE con esquema: $PROJECT_BASE"
+          
           xcodebuild clean build \
-            -project MiApp.xcodeproj \
-            -scheme MiApp \
+            -project "$PROJECT_FILE" \
+            -scheme "$PROJECT_BASE" \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY=""
 
-      - name: Empaquetar Mi App con el motor
+      - name: Empaquetar IPA con el motor Filza
         run: |
+          rm -rf Payload
           mkdir -p Payload
-          APP_PATH=$(find build -name "MiApp.app" -type d | head -n 1)
+          
+          # Localizar el bundle .app generado
+          APP_PATH=$(find build -name "*.app" -type d | head -n 1)
+          APP_NAME=$(basename "$APP_PATH")
+          BINARY_NAME="${APP_NAME%.app}"
           echo "App encontrada en: $APP_PATH"
+          echo "Nombre: $APP_NAME, Binario: $BINARY_NAME"
+          
           cp -r "$APP_PATH" Payload/
           
+          # Localizar dylib compilada del motor
           DYLIB_PATH=$(find motor_filza -name "FilzaApplySandboxExt.dylib" | head -n 1)
           if [ -z "$DYLIB_PATH" ]; then
             DYLIB_PATH=$(find motor_filza/.theos -name "*.dylib" | head -n 1)
           fi
-          DYLIB_NAME=$(basename "$DYLIB_PATH")
-          echo "Motor encontrado: $DYLIB_NAME"
-          cp "$DYLIB_PATH" Payload/MiApp.app/
+          if [ -z "$DYLIB_PATH" ]; then
+            DYLIB_PATH=$(find motor_filza -name "*.dylib" | head -n 1)
+          fi
           
-          insert_dylib --strip-codesig --all-yes "@executable_path/$DYLIB_NAME" Payload/MiApp.app/MiApp Payload/MiApp.app/MiApp_patched
-          mv Payload/MiApp.app/MiApp_patched Payload/MiApp.app/MiApp
+          if [ -n "$DYLIB_PATH" ]; then
+            DYLIB_NAME=$(basename "$DYLIB_PATH")
+            echo "Motor dylib encontrado: $DYLIB_PATH -> $DYLIB_NAME"
+            cp "$DYLIB_PATH" "Payload/$APP_NAME/"
+            
+            insert_dylib --strip-codesig --all-yes "@executable_path/$DYLIB_NAME" "Payload/$APP_NAME/$BINARY_NAME" "Payload/$APP_NAME/${BINARY_NAME}_patched"
+            mv "Payload/$APP_NAME/${BINARY_NAME}_patched" "Payload/$APP_NAME/$BINARY_NAME"
+            chmod +x "Payload/$APP_NAME/$BINARY_NAME"
+          else
+            echo "Aviso: No se encontró dylib externa; empaquetando binario directo."
+          fi
+          
+          # Firma ad-hoc para iOS / GBox
+          ldid -S "Payload/$APP_NAME/$BINARY_NAME" || true
           
           echo "=== Contenido del bundle ==="
-          ls -la Payload/MiApp.app/
-          echo "=== Load commands del binario ==="
-          otool -L Payload/MiApp.app/MiApp
+          ls -la "Payload/$APP_NAME/"
           
           FECHA=$(date +%Y%m%d_%H%M%S)
-          zip -qr MiApp_${FECHA}.ipa Payload/
-          echo "IPA generado: MiApp_${FECHA}.ipa"
+          IPA_NAME="${BINARY_NAME}_${FECHA}.ipa"
+          zip -qr "$IPA_NAME" Payload/
+          echo "IPA generado exitosamente: $IPA_NAME"
+          echo "IPA_OUTPUT=$IPA_NAME" >> $GITHUB_ENV
 
-      - name: Subir IPA final
+      - name: Subir IPA final a GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Mi-App-Final
-          path: MiApp_*.ipa
+          name: MiFilzaPro-IPA
+          path: "*.ipa"

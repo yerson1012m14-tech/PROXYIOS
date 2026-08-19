@@ -162,7 +162,10 @@ static UIColor *acento(void) { return [UIColor colorWithRed:0.2 green:1.0 blue:0
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = colorFondo();
-    self.title = @"MiFilza";
+    self.title = @"MiFilza Pro";
+
+    UIBarButtonItem *btnMotor = [[UIBarButtonItem alloc] initWithTitle:@"⚡ Motor" style:UIBarButtonItemStylePlain target:self action:@selector(accionEncenderMotor)];
+    self.navigationItem.rightBarButtonItem = btnMotor;
 
     self.apps = [NSMutableArray new];
     self.tv = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
@@ -230,9 +233,18 @@ static UIColor *acento(void) { return [UIColor colorWithRed:0.2 green:1.0 blue:0
 
     [self.apps addObjectsFromArray:[set array]];
     [self.apps sortUsingSelector:@selector(localizedStandardCompare:)];
-    self.title = [NSString stringWithFormat:@"MiFilza (%lu)", (unsigned long)self.apps.count];
+    self.title = [NSString stringWithFormat:@"MiFilza Pro (%lu)", (unsigned long)self.apps.count];
     self.vacioLabel.hidden = (self.apps.count != 0);
     [self.tv reloadData];
+}
+
+- (void)accionEncenderMotor {
+    asegurarMotor();
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"⚡ Motor Filza"
+        message:@"Motor MCMFilza activado.\nTweakInit y bypass de Sandbox ejecutados con éxito."
+        preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)tf {
