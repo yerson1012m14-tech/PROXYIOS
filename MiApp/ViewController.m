@@ -46,14 +46,21 @@ static NSString *fmtSize(unsigned long long b) {
     UIBarButtonItem *btnCompartir = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(compartir)];
     self.navigationItem.rightBarButtonItem = btnCompartir;
 
-    self.tv = [[UITextView alloc] initWithFrame:self.view.bounds];
-    self.tv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tv = [[UITextView alloc] initWithFrame:CGRectZero];
+    self.tv.translatesAutoresizingMaskIntoConstraints = NO;
     self.tv.editable = NO;
     self.tv.textColor = [UIColor labelColor];
     self.tv.backgroundColor = [UIColor systemBackgroundColor];
     self.tv.font = [UIFont fontWithName:@"Menlo" size:12] ?: [UIFont systemFontOfSize:12];
     self.tv.contentInset = UIEdgeInsetsMake(10, 12, 10, 12);
     [self.view addSubview:self.tv];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.tv.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.tv.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
+        [self.tv.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor],
+        [self.tv.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor]
+    ]];
 
     [self refrescar];
 }
@@ -152,13 +159,20 @@ static NSString *fmtSize(unsigned long long b) {
     self.navigationItem.hidesSearchBarWhenScrolling = NO;
     self.definesPresentationContext = YES;
 
-    // Tabla estilo Filza estándar
-    self.tv = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
-    self.tv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    // Tabla estilo Filza estándar anclada a safeAreaLayoutGuide
+    self.tv = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.tv.translatesAutoresizingMaskIntoConstraints = NO;
     self.tv.backgroundColor = [UIColor systemBackgroundColor];
     self.tv.dataSource = self;
     self.tv.delegate = self;
     [self.view addSubview:self.tv];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.tv.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.tv.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.tv.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.tv.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor]
+    ]];
 
     // Toolbar inferior estilo Filza
     [self configurarToolbarInferior];
@@ -203,7 +217,6 @@ static NSString *fmtSize(unsigned long long b) {
     NSArray *contents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:self.rutaActual error:&err];
 
     if (!contents && ![self.rutaActual isEqualToString:@"/var/mobile"]) {
-        // Si no se puede abrir /var/mobile directamente, probar /
         contents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:@"/" error:nil];
         if (contents) {
             self.rutaActual = @"/";
@@ -270,7 +283,6 @@ static NSString *fmtSize(unsigned long long b) {
 
     [a addAction:[UIAlertAction actionWithTitle:@"Cancelar" style:UIAlertActionStyleCancel handler:nil]];
 
-    // Compatibilidad iPad
     if (a.popoverPresentationController) {
         a.popoverPresentationController.barButtonItem = self.toolbarItems[2];
     }
