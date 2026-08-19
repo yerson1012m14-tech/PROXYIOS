@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Folder, 
   FileText, 
@@ -15,1104 +15,621 @@ import {
   Code2, 
   Check, 
   X, 
-  Upload, 
-  Sparkles,
-  Smartphone,
-  Music,
-  Camera,
-  Video,
-  Lock,
-  Globe,
-  Settings,
-  Terminal,
-  FileCode,
-  Shield,
-  Layers,
-  Sliders,
-  Power,
-  Zap,
-  Activity,
-  AlertTriangle,
-  Play,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp
+  Share2, 
+  Zap, 
+  Boxes, 
+  Smartphone, 
+  CornerDownRight, 
+  FileCode, 
+  Database, 
+  Cpu, 
+  Image as ImageIcon 
 } from 'lucide-react';
 import { INITIAL_APPS, INITIAL_FILE_SYSTEM, formatFileSize } from './mockFileSystem';
-import { FileItem, AppMetadata } from './types';
+import { FileItem } from './types';
 
 export default function App() {
-  // Navigation State
-  const [currentView, setCurrentView] = useState<'appList' | 'browser' | 'viewer'>('appList');
+  // Current Directory path (default /var/mobile like native Filza)
+  const [currentPath, setCurrentPath] = useState<string>('/var/mobile');
   const [history, setHistory] = useState<string[]>([]);
-  const [currentPath, setCurrentPath] = useState<string>('');
   
-  // Data State
-  const [apps, setApps] = useState<AppMetadata[]>(INITIAL_APPS);
+  // File System State
   const [fileSystem, setFileSystem] = useState<{ [path: string]: FileItem }>(INITIAL_FILE_SYSTEM);
-  
-  // Search & Filter
-  const [manualBundleId, setManualBundleId] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
   
-  // File Viewer State
+  // File Viewer & Editor State
   const [activeFile, setActiveFile] = useState<{ path: string; item: FileItem } | null>(null);
-  const [viewerMode, setViewerMode] = useState<'text' | 'hex' | 'plist' | 'edit'>('text');
+  const [viewerMode, setViewerMode] = useState<'text' | 'hex' | 'edit'>('text');
   const [editedContent, setEditedContent] = useState('');
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [copiedNotification, setCopiedNotification] = useState(false);
 
-  // Dialog State for creating files/folders
+  // Dialogs
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createType, setCreateType] = useState<'file' | 'folder'>('file');
   const [newFileName, setNewFileName] = useState('');
   const [newFileContent, setNewFileContent] = useState('');
 
-  // -------------------------------------------------------------
-  // MOTOR MCMFILZA (asegurarMotor / TweakInit / MCMFilzaStart)
-  // -------------------------------------------------------------
-  const [motorEncendido, setMotorEncendido] = useState<boolean>(true);
-  const [motorIniciando, setMotorIniciando] = useState<boolean>(false);
-  const [mostrarLogsMotor, setMostrarLogsMotor] = useState<boolean>(false);
-  const [alertaMotorApagado, setAlertaMotorApagado] = useState<boolean>(false);
-  const [motorLogs, setMotorLogs] = useState<string[]>([
-    '[asegurarMotor] Inicializado: dlsym(RTLD_DEFAULT, "TweakInit") -> OK',
-    '[asegurarMotor] MCMFilzaStart() -> 0',
-    '[asegurarMotor] MCMFilzaSetUnrestrictedFilesystem(1) -> Sandbox Desactivado',
-    '[Sistema] Motor MCMFilza en estado listo.'
-  ]);
+  const [showAppsSheet, setShowAppsSheet] = useState(false);
+  const [showManualPathModal, setShowManualPathModal] = useState(false);
+  const [manualPathInput, setManualPathInput] = useState('');
+  const [manualBundleIdInput, setManualBundleIdInput] = useState('');
+  const [showMotorModal, setShowMotorModal] = useState(false);
 
-  // Función para encender / apagar el motor
-  const encenderMotor = () => {
-    if (motorIniciando) return;
-    setMotorIniciando(true);
-    setAlertaMotorApagado(false);
-
-    const nuevosLogs = [
-      `[${new Date().toLocaleTimeString()}] Ejecutando asegurarMotor()...`,
-      `[${new Date().toLocaleTimeString()}] dlsym(RTLD_DEFAULT, "TweakInit") -> OK (0x104a8210)`,
-      `[${new Date().toLocaleTimeString()}] tweakInit() invocado -> Inyectando bypass de sandbox`,
-      `[${new Date().toLocaleTimeString()}] MCMFilzaStart() -> Motor iniciado en puerto IPC interno`,
-      `[${new Date().toLocaleTimeString()}] MCMFilzaSetUnrestrictedFilesystem(1) -> Acceso irrestricto concedido`,
-      `[${new Date().toLocaleTimeString()}] ✅ ¡MOTOR ENCENDIDO! Acceso a todos los contenedores y raíz habilitado.`
-    ];
-
-    let step = 0;
-    const interval = setInterval(() => {
-      if (step < nuevosLogs.length) {
-        const logLine = nuevosLogs[step];
-        setMotorLogs(prev => [...prev, logLine]);
-        step++;
-      } else {
-        clearInterval(interval);
-        setMotorIniciando(false);
-        setMotorEncendido(true);
-      }
-    }, 200);
-  };
-
-  const apagarMotor = () => {
-    setMotorEncendido(false);
-    setMotorLogs(prev => [
-      ...prev,
-      `[${new Date().toLocaleTimeString()}] ⚠️ Motor MCMFilza APAGADO. Sandbox estándar de iOS restaurado.`
-    ]);
-  };
-
-  const toggleMotor = () => {
-    if (motorEncendido) {
-      apagarMotor();
-    } else {
-      encenderMotor();
-    }
-  };
-
-  // Helper to resolve directory object for a path
-  const getDirectoryAt = (path: string): FileItem | null => {
-    if (fileSystem[path]) return fileSystem[path];
-
-    // Check root path traversal
-    if (path.startsWith('/')) {
-      const parts = path.split('/').filter(Boolean);
-      let current: FileItem | undefined = fileSystem['/'];
-      for (const part of parts) {
-        if (!current || !current.children || !current.children[part]) {
-          return null;
-        }
-        current = current.children[part];
-      }
-      return current || null;
-    }
-    return null;
-  };
-
-  // Open Container for a Bundle ID
-  const handleOpenContainer = (bundleId: string) => {
-    const trimmed = bundleId.trim();
-    if (!trimmed) return;
-
-    if (!motorEncendido) {
-      setAlertaMotorApagado(true);
-      return;
-    }
-
-    let app = apps.find(a => a.bundleId.toLowerCase() === trimmed.toLowerCase());
+  // Get current directory's children
+  const currentDirectoryItems = useMemo(() => {
+    const items: Array<{ name: string; fullPath: string; isDirectory: boolean; item?: FileItem }> = [];
     
-    if (!app) {
-      // Provision dynamic container for unlisted bundle ID
-      const newUuid = `${Math.random().toString(36).substring(2, 10).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}-4C5A-85C1-${Math.random().toString(36).substring(2, 14).toUpperCase()}`;
-      const newPath = `/var/mobile/Containers/Data/Application/${newUuid}`;
-      
-      const newApp: AppMetadata = {
-        bundleId: trimmed,
-        name: trimmed.split('.').pop() || trimmed,
-        version: '1.0',
-        developer: 'Installed Application',
-        iconType: 'tool',
-        containerPath: newPath,
-        installedSize: '4.2 MB'
-      };
+    // Prefix to look for direct children
+    const prefix = currentPath === '/' ? '/' : `${currentPath}/`;
+    
+    // Find all paths that start with currentPath/ and have no further slashes
+    const childPaths = Object.keys(fileSystem).filter(p => {
+      if (p === currentPath) return false;
+      if (!p.startsWith(prefix)) return false;
+      const relative = p.slice(prefix.length);
+      return !relative.includes('/');
+    });
 
-      // Add to simulated file system
-      setFileSystem(prev => ({
-        ...prev,
-        [newPath]: {
-          name: newUuid,
-          isDir: true,
-          modifiedDate: '2026-08-19 02:00',
-          permissions: 'drwxr-xr-x',
-          children: {
-            'Documents': {
-              name: 'Documents',
-              isDir: true,
-              modifiedDate: '2026-08-19 02:00',
-              permissions: 'drwxr-xr-x',
-              children: {
-                'data.json': {
-                  name: 'data.json',
-                  isDir: false,
-                  size: 256,
-                  type: 'json',
-                  modifiedDate: '2026-08-19 02:00',
-                  permissions: '-rw-r--r--',
-                  content: JSON.stringify({ bundleId: trimmed, initialized: true, timestamp: Date.now() }, null, 2)
-                }
-              }
-            },
-            'Library': {
-              name: 'Library',
-              isDir: true,
-              modifiedDate: '2026-08-19 02:00',
-              permissions: 'drwxr-xr-x',
-              children: {
-                'Preferences': {
-                  name: 'Preferences',
-                  isDir: true,
-                  modifiedDate: '2026-08-19 02:00',
-                  permissions: 'drwxr-xr-x',
-                  children: {
-                    [`${trimmed}.plist`]: {
-                      name: `${trimmed}.plist`,
-                      isDir: false,
-                      size: 512,
-                      type: 'plist',
-                      modifiedDate: '2026-08-19 02:00',
-                      permissions: '-rw-r--r--',
-                      content: `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n  <key>CFBundleIdentifier</key>\n  <string>${trimmed}</string>\n  <key>FirstRunCompleted</key>\n  <true/>\n</dict>\n</plist>`
-                    }
-                  }
-                },
-                'Caches': {
-                  name: 'Caches',
-                  isDir: true,
-                  modifiedDate: '2026-08-19 02:00',
-                  permissions: 'drwxr-xr-x',
-                  children: {}
-                }
-              }
-            },
-            'tmp': {
-              name: 'tmp',
-              isDir: true,
-              modifiedDate: '2026-08-19 02:00',
-              permissions: 'drwxrwxrwx',
-              children: {}
-            }
-          }
-        }
-      }));
-
-      setApps(prev => [newApp, ...prev]);
-      app = newApp;
+    for (const p of childPaths) {
+      const name = p.slice(prefix.length);
+      const item = fileSystem[p];
+      items.push({
+        name,
+        fullPath: p,
+        isDirectory: item ? item.isDir : false,
+        item
+      });
     }
 
-    setManualBundleId('');
-    setCurrentPath(app.containerPath);
-    setHistory([app.containerPath]);
-    setCurrentView('browser');
+    // Sort: directories first, then alphabetically
+    return items.sort((a, b) => {
+      if (a.isDirectory && !b.isDirectory) return -1;
+      if (!a.isDirectory && b.isDirectory) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [currentPath, fileSystem]);
+
+  // Filtered by search bar
+  const filteredItems = useMemo(() => {
+    if (!searchFilter.trim()) return currentDirectoryItems;
+    const q = searchFilter.toLowerCase();
+    return currentDirectoryItems.filter(i => i.name.toLowerCase().includes(q));
+  }, [currentDirectoryItems, searchFilter]);
+
+  // Navigate to path
+  const navigateTo = (newPath: string) => {
+    if (newPath === currentPath) return;
+    setHistory(prev => [...prev, currentPath]);
+    setCurrentPath(newPath);
+    setSearchFilter('');
   };
 
-  // Navigate deeper into directory
-  const handleNavigateTo = (folderName: string) => {
-    if (!motorEncendido) {
-      setAlertaMotorApagado(true);
-      return;
-    }
-    const nextPath = currentPath === '/' ? `/${folderName}` : `${currentPath}/${folderName}`;
-    setHistory(prev => [...prev, nextPath]);
-    setCurrentPath(nextPath);
-  };
-
-  // Navigate back
-  const handleGoBack = () => {
-    if (currentView === 'viewer') {
-      setCurrentView('browser');
-      setActiveFile(null);
-      return;
-    }
-
-    if (history.length > 1) {
-      const newHistory = [...history];
-      newHistory.pop();
-      const prevPath = newHistory[newHistory.length - 1];
-      setHistory(newHistory);
-      setCurrentPath(prevPath);
-    } else {
-      setCurrentView('appList');
-      setHistory([]);
-      setCurrentPath('');
+  // Go back
+  const goBack = () => {
+    if (history.length > 0) {
+      const prev = history[history.length - 1];
+      setHistory(h => h.slice(0, -1));
+      setCurrentPath(prev);
+    } else if (currentPath !== '/') {
+      const parts = currentPath.split('/').filter(Boolean);
+      parts.pop();
+      setCurrentPath(parts.length === 0 ? '/' : `/${parts.join('/')}`);
     }
   };
 
-  // Open file in viewer
-  const handleOpenFile = (file: FileItem, path: string) => {
-    if (!motorEncendido) {
-      setAlertaMotorApagado(true);
-      return;
-    }
-    setActiveFile({ path, item: file });
-    setEditedContent(file.content || '');
-    if (file.name.endsWith('.plist') || file.type === 'plist') {
-      setViewerMode('plist');
-    } else if (file.type === 'binary' || file.name.endsWith('.dat') || file.name.endsWith('.car')) {
-      setViewerMode('hex');
-    } else {
-      setViewerMode('text');
-    }
-    setCurrentView('viewer');
+  // Open a file
+  const handleOpenFile = (path: string, item: FileItem) => {
+    setActiveFile({ path, item });
+    setEditedContent(item.content || '');
+    setViewerMode('text');
   };
 
   // Save edited file
   const handleSaveFile = () => {
     if (!activeFile) return;
-
-    // Mutate fileSystem in state
-    setFileSystem(prev => {
-      const updated = { ...prev };
-      const path = activeFile.path;
-      
-      // Update top level container
-      if (updated[path]) {
-        updated[path] = {
-          ...updated[path],
-          content: editedContent,
-          size: new Blob([editedContent]).size,
-          modifiedDate: '2026-08-19 (editado)'
-        };
-      } else {
-        // Deep search update
-        const parts = path.split('/').filter(Boolean);
-        const fileName = parts.pop();
-        if (fileName) {
-          const dirPath = '/' + parts.join('/');
-          const dir = getDirectoryAt(dirPath);
-          if (dir && dir.children && dir.children[fileName]) {
-            dir.children[fileName] = {
-              ...dir.children[fileName],
-              content: editedContent,
-              size: new Blob([editedContent]).size,
-              modifiedDate: '2026-08-19 (editado)'
-            };
-          }
-        }
+    setFileSystem(prev => ({
+      ...prev,
+      [activeFile.path]: {
+        ...activeFile.item,
+        content: editedContent,
+        size: editedContent.length,
+        modifiedDate: 'Just now'
       }
-      return updated;
-    });
-
+    }));
     setActiveFile(prev => prev ? {
       ...prev,
       item: {
         ...prev.item,
         content: editedContent,
-        size: new Blob([editedContent]).size
+        size: editedContent.length,
+        modifiedDate: 'Just now'
       }
     } : null);
-
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
+    setViewerMode('text');
   };
 
   // Create new file or folder
-  const handleCreateItem = () => {
+  const handleCreate = () => {
     if (!newFileName.trim()) return;
-
-    const name = newFileName.trim();
-    const isDir = createType === 'folder';
-    const targetDir = getDirectoryAt(currentPath);
-
-    if (targetDir) {
-      if (!targetDir.children) targetDir.children = {};
-      targetDir.children[name] = {
-        name,
-        isDir,
-        size: isDir ? undefined : new Blob([newFileContent]).size,
-        content: isDir ? undefined : newFileContent,
-        type: name.endsWith('.plist') ? 'plist' : name.endsWith('.json') ? 'json' : name.endsWith('.sqlite') ? 'sqlite' : 'text',
-        modifiedDate: '2026-08-19',
-        permissions: isDir ? 'drwxr-xr-x' : '-rw-r--r--',
-        children: isDir ? {} : undefined
-      };
-      setFileSystem({ ...fileSystem });
-    }
+    const cleanName = newFileName.trim().replace(/\//g, '');
+    const newPath = currentPath === '/' ? `/${cleanName}` : `${currentPath}/${cleanName}`;
+    
+    setFileSystem(prev => ({
+      ...prev,
+      [newPath]: {
+        name: cleanName,
+        isDir: createType === 'folder',
+        type: createType === 'file' ? 'text' : undefined,
+        size: createType === 'folder' ? 0 : newFileContent.length,
+        permissions: createType === 'folder' ? 'drwxr-xr-x' : '-rw-r--r--',
+        modifiedDate: 'Just now',
+        content: createType === 'file' ? newFileContent : undefined
+      }
+    }));
 
     setNewFileName('');
     setNewFileContent('');
     setShowCreateModal(false);
   };
 
-  // Delete an item
-  const handleDeleteItem = (e: React.MouseEvent, itemName: string) => {
-    e.stopPropagation();
-    if (!confirm(`¿Eliminar "${itemName}" de forma permanente?`)) return;
-
-    const targetDir = getDirectoryAt(currentPath);
-    if (targetDir && targetDir.children && targetDir.children[itemName]) {
-      delete targetDir.children[itemName];
-      setFileSystem({ ...fileSystem });
-    }
-  };
-
-  // Current Directory items list
-  const currentDirectory = useMemo(() => {
-    if (!currentPath) return null;
-    return getDirectoryAt(currentPath);
-  }, [currentPath, fileSystem]);
-
-  const directoryEntries = useMemo(() => {
-    if (!currentDirectory || !currentDirectory.children) return [];
-    
-    const entries = Object.values(currentDirectory.children);
-    const sorted = [...entries].sort((a, b) => {
-      if (a.isDir && !b.isDir) return -1;
-      if (!a.isDir && b.isDir) return 1;
-      return a.name.localeCompare(b.name);
+  // Delete item
+  const handleDelete = (pathToDelete: string) => {
+    setFileSystem(prev => {
+      const copy = { ...prev };
+      Object.keys(copy).forEach(k => {
+        if (k === pathToDelete || k.startsWith(`${pathToDelete}/`)) {
+          delete copy[k];
+        }
+      });
+      return copy;
     });
-
-    if (searchFilter) {
-      return sorted.filter(item => 
-        item.name.toLowerCase().includes(searchFilter.toLowerCase())
-      );
-    }
-    return sorted;
-  }, [currentDirectory, searchFilter]);
-
-  // Hex dump generator for binary viewer
-  const generateHexDump = (str?: string) => {
-    if (!str) return '00000000: 00 00 00 00  00 00 00 00  ........';
-    const lines = [];
-    const bytes = new TextEncoder().encode(str);
-    for (let i = 0; i < Math.min(bytes.length, 512); i += 16) {
-      const chunk = bytes.slice(i, i + 16);
-      const hex = Array.from(chunk).map(b => b.toString(16).padStart(2, '0')).join(' ');
-      const ascii = Array.from(chunk).map(b => (b >= 32 && b <= 126 ? String.fromCharCode(b) : '.')).join('');
-      const offset = i.toString(16).padStart(8, '0');
-      lines.push(`${offset}: ${hex.padEnd(48, ' ')}  |${ascii}|`);
-    }
-    return lines.join('\n');
   };
 
-  // Helper icon for app
-  const getAppIcon = (type: AppMetadata['iconType']) => {
-    switch (type) {
-      case 'music': return <Music className="w-5 h-5 text-[#33ff80]" />;
-      case 'camera': return <Camera className="w-5 h-5 text-[#33ff80]" />;
-      case 'video': return <Video className="w-5 h-5 text-[#33ff80]" />;
-      case 'lock': return <Lock className="w-5 h-5 text-[#33ff80]" />;
-      case 'globe': return <Globe className="w-5 h-5 text-[#33ff80]" />;
-      case 'gear': return <Settings className="w-5 h-5 text-[#33ff80]" />;
-      case 'chat': return <Smartphone className="w-5 h-5 text-[#33ff80]" />;
-      default: return <Terminal className="w-5 h-5 text-[#33ff80]" />;
+  // Jump to Bundle ID container
+  const handleOpenBundleId = (bundleId: string) => {
+    const bid = bundleId.trim();
+    if (!bid) return;
+    const matchedApp = INITIAL_APPS.find(a => a.bundleId.toLowerCase() === bid.toLowerCase());
+    if (matchedApp) {
+      navigateTo(matchedApp.containerPath);
+    } else {
+      navigateTo('/var/mobile/Containers/Data/Application');
     }
+    setShowAppsSheet(false);
+  };
+
+  // Generate Hex dump for Viewer
+  const generateHexDump = (content?: string) => {
+    const text = content || '';
+    const bytes: number[] = [];
+    for (let i = 0; i < Math.min(text.length, 512); i++) {
+      bytes.push(text.charCodeAt(i));
+    }
+    if (bytes.length === 0) {
+      return '// (Archivo vacío o sin datos binarios cargados)';
+    }
+
+    let out = `// Hex Dump (primeros ${bytes.length} bytes):\n\n`;
+    for (let i = 0; i < bytes.length; i += 16) {
+      const hexOffset = i.toString(16).padStart(8, '0');
+      let hexBytes = '';
+      let ascii = '';
+      for (let j = 0; j < 16; j++) {
+        if (i + j < bytes.length) {
+          const b = bytes[i + j];
+          hexBytes += b.toString(16).padStart(2, '0') + ' ';
+          ascii += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
+        } else {
+          hexBytes += '   ';
+        }
+        if (j === 7) hexBytes += ' ';
+      }
+      out += `${hexOffset}: ${hexBytes} |${ascii}|\n`;
+    }
+    return out;
+  };
+
+  const getFileIcon = (name: string, isDir: boolean) => {
+    if (isDir) return <Folder className="w-5 h-5 text-blue-500 fill-blue-500/20" />;
+    const ext = name.split('.').pop()?.toLowerCase();
+    if (ext === 'plist') return <FileCode className="w-5 h-5 text-amber-500" />;
+    if (ext === 'sqlite' || ext === 'db') return <Database className="w-5 h-5 text-purple-400" />;
+    if (ext === 'dylib' || ext === 'bin' || ext === 'dat') return <Cpu className="w-5 h-5 text-emerald-400" />;
+    if (['png', 'jpg', 'jpeg', 'car', 'svg'].includes(ext || '')) return <ImageIcon className="w-5 h-5 text-cyan-400" />;
+    return <FileText className="w-5 h-5 text-zinc-400" />;
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0c] text-white flex flex-col font-mono selection:bg-[#33ff80]/30 selection:text-[#33ff80]">
-      
+    <div className="min-h-screen bg-[#000000] text-zinc-100 flex flex-col font-sans select-none antialiased">
       {/* ========================================================= */}
-      {/* iOS-Style Navigation Bar Header                            */}
+      {/* 1. TOP NAVIGATION BAR (Exact Native iOS Filza Style)     */}
       {/* ========================================================= */}
-      <header className="sticky top-0 z-30 bg-[#0d0e11]/95 backdrop-blur border-b border-[#22242a] px-3 sm:px-4 py-2.5">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-2 sm:space-x-3">
-            {currentView !== 'appList' && (
-              <button
-                id="btn-nav-back"
-                onClick={handleGoBack}
-                className="flex items-center space-x-1 text-[#33ff80] hover:text-[#52ff94] transition px-2 py-1 rounded bg-[#1c1e24] hover:bg-[#252830] border border-[#2f333e] text-xs font-semibold"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span className="hidden sm:inline">Atrás</span>
-              </button>
-            )}
-            
-            <div className="flex items-center space-x-2">
-              <div className={`w-2.5 h-2.5 rounded-full ${motorEncendido ? 'bg-[#33ff80] shadow-[0_0_8px_#33ff80]' : 'bg-red-500 shadow-[0_0_8px_#ef4444]'} transition-all`} />
-              <h1 className="text-sm sm:text-base font-bold text-[#33ff80] tracking-tight">
-                {currentView === 'appList' && `MiFilza Pro v2.0 (${apps.length})`}
-                {currentView === 'browser' && (currentPath.split('/').filter(Boolean).pop() || '/')}
-                {currentView === 'viewer' && activeFile?.item.name}
-              </h1>
-            </div>
+      <header className="sticky top-0 z-30 bg-[#121214]/90 backdrop-blur-md border-b border-zinc-800/80 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2 overflow-hidden">
+          {currentPath !== '/' && (
+            <button 
+              onClick={goBack}
+              className="p-1.5 -ml-1 text-emerald-400 hover:text-emerald-300 active:scale-95 transition-transform flex items-center gap-1 text-sm font-medium"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Atrás</span>
+            </button>
+          )}
+          <div className="flex flex-col">
+            <h1 className="font-semibold text-base text-zinc-100 truncate flex items-center gap-1.5">
+              <span>{currentPath === '/' ? '/' : currentPath.split('/').pop()}</span>
+            </h1>
+            <span className="text-[10px] text-zinc-400 font-mono truncate max-w-[220px] sm:max-w-md">
+              {currentPath}
+            </span>
           </div>
+        </div>
 
-          {/* Right Header: Motor Control Button & Root Navigation */}
-          <div className="flex items-center space-x-2 text-xs">
-            
-            {/* BOTÓN PARA ENCENDER / APAGAR EL MOTOR (HEADER) */}
-            <button
-              id="btn-toggle-motor-header"
-              onClick={toggleMotor}
-              disabled={motorIniciando}
-              className={`px-3 py-1.5 rounded-lg flex items-center space-x-1.5 font-bold transition shadow-sm border ${
-                motorIniciando
-                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse'
-                  : motorEncendido
-                  ? 'bg-[#33ff80]/15 text-[#33ff80] hover:bg-[#33ff80]/25 border-[#33ff80]/50 shadow-[0_0_12px_rgba(51,255,128,0.2)]'
-                  : 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border-red-500/50 animate-bounce'
-              }`}
-              title={motorEncendido ? "Motor Activo (Haz clic para apagar)" : "¡Haz clic aquí para encender el motor!"}
-            >
-              <Power className={`w-3.5 h-3.5 ${motorIniciando ? 'animate-spin' : motorEncendido ? 'text-[#33ff80]' : 'text-red-400'}`} />
-              <span className="text-[11px] sm:text-xs">
-                {motorIniciando 
-                  ? 'Iniciando...' 
-                  : motorEncendido 
-                  ? 'MOTOR: ON' 
-                  : '⚡ ENCENDER MOTOR'}
-              </span>
-            </button>
-
-            <button
-              id="btn-root-system"
-              onClick={() => {
-                if (!motorEncendido) {
-                  setAlertaMotorApagado(true);
-                  return;
-                }
-                setCurrentPath('/');
-                setHistory(['/']);
-                setCurrentView('browser');
-              }}
-              className={`px-2.5 py-1.5 rounded flex items-center space-x-1.5 transition border ${
-                currentPath === '/' 
-                  ? 'bg-[#33ff80]/20 text-[#33ff80] border-[#33ff80]/40 font-bold' 
-                  : 'bg-[#15171c] text-gray-400 hover:text-white border-[#272b35]'
-              }`}
-              title="Explorar raíz del sistema /"
-            >
-              <HardDrive className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Root /</span>
-            </button>
-
-            <button
-              id="btn-reload-apps"
-              onClick={() => {
-                setApps(INITIAL_APPS);
-                setFileSystem(INITIAL_FILE_SYSTEM);
-              }}
-              className="p-1.5 rounded bg-[#15171c] hover:bg-[#1f222a] text-gray-400 hover:text-white border border-[#272b35] transition"
-              title="Recargar aplicaciones"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
-          </div>
+        {/* Top Right Action Buttons */}
+        <div className="flex items-center gap-1.5">
+          <button 
+            onClick={() => setShowCreateModal(true)}
+            className="p-2 text-emerald-400 hover:bg-zinc-800/60 rounded-full transition-colors active:scale-95"
+            title="Crear archivo o carpeta"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={() => setShowMotorModal(true)}
+            className="flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full text-xs font-mono font-medium hover:bg-emerald-500/20 active:scale-95 transition-all"
+            title="Estado del Motor MCMFilza"
+          >
+            <Zap className="w-3.5 h-3.5 fill-emerald-400" />
+            <span>Motor: ON</span>
+          </button>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-4xl w-full mx-auto p-3 sm:p-4 pb-16">
-
-        {/* ALERTA: SI EL MOTOR ESTÁ APAGADO */}
-        {alertaMotorApagado && !motorEncendido && (
-          <div className="mb-4 bg-red-950/40 border border-red-500/60 rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs shadow-lg animate-pulse">
-            <div className="flex items-center space-x-2 text-red-200">
-              <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
-              <span>
-                <strong>¡Motor apagado!</strong> Necesitas encender el motor MCMFilza para desbloquear los contenedores de aplicaciones y el sistema de archivos irrestricto.
-              </span>
-            </div>
-            <button
-              onClick={encenderMotor}
-              className="px-3 py-1.5 bg-[#33ff80] hover:bg-[#4dff93] text-black font-bold rounded-lg flex items-center space-x-1 flex-shrink-0 transition shadow"
+      {/* ========================================================= */}
+      {/* 2. SEARCH BAR (Native iOS UISearchBar Style)              */}
+      {/* ========================================================= */}
+      <div className="px-4 py-2 bg-[#09090b] border-b border-zinc-800/40">
+        <div className="relative flex items-center">
+          <Search className="w-4 h-4 text-zinc-500 absolute left-3 pointer-events-none" />
+          <input
+            type="text"
+            value={searchFilter}
+            onChange={(e) => setSearchFilter(e.target.value)}
+            placeholder="Buscar archivos o escribir nombre..."
+            className="w-full bg-zinc-900/90 text-sm text-zinc-100 placeholder-zinc-500 pl-9 pr-8 py-1.5 rounded-xl border border-zinc-800 focus:outline-none focus:border-emerald-500/60 transition-colors font-mono"
+          />
+          {searchFilter && (
+            <button 
+              onClick={() => setSearchFilter('')}
+              className="absolute right-2.5 p-1 text-zinc-400 hover:text-zinc-200"
             >
-              <Zap className="w-3.5 h-3.5 fill-black" />
-              <span>Encender Ahora</span>
+              <X className="w-3.5 h-3.5" />
             </button>
+          )}
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* 3. DIRECTORY CONTENT LIST (Real Filza Explorer)           */}
+      {/* ========================================================= */}
+      <main className="flex-1 overflow-y-auto pb-24 divide-y divide-zinc-800/50">
+        {/* Parent ".." item when not in root */}
+        {currentPath !== '/' && (
+          <div 
+            onClick={goBack}
+            className="flex items-center justify-between px-4 py-3 hover:bg-zinc-900/70 active:bg-zinc-800 cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-1 rounded-lg bg-zinc-800/80 text-zinc-400">
+                <ArrowLeft className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-zinc-300">..</div>
+                <div className="text-[11px] text-zinc-500">Subir al directorio anterior</div>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* ========================================================= */}
-        {/* VIEW 1: APP LIST (ViewController.m Initial Screen)         */}
-        {/* ========================================================= */}
-        {currentView === 'appList' && (
-          <div className="space-y-4">
-            
-            {/* PANEL PRINCIPAL DEL MOTOR (ASEGURARMOTOR) */}
-            <div className={`rounded-xl border transition-all duration-300 p-4 shadow-xl ${
-              motorEncendido 
-                ? 'bg-gradient-to-r from-[#101419] to-[#0f1715] border-[#33ff80]/40' 
-                : 'bg-gradient-to-r from-[#171012] to-[#141215] border-red-500/40'
-            }`}>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center space-x-3">
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center border transition-all ${
-                    motorEncendido 
-                      ? 'bg-[#33ff80]/10 border-[#33ff80]/50 text-[#33ff80] shadow-[0_0_15px_rgba(51,255,128,0.25)]' 
-                      : 'bg-red-500/10 border-red-500/50 text-red-400'
-                  }`}>
-                    <Zap className={`w-6 h-6 ${motorEncendido ? 'fill-[#33ff80]' : ''}`} />
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <h2 className="text-sm font-bold text-white tracking-wide">
-                        MOTOR MCMFILZA (asegurarMotor)
-                      </h2>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                        motorEncendido 
-                          ? 'bg-[#33ff80]/20 text-[#33ff80] border border-[#33ff80]/40' 
-                          : 'bg-red-500/20 text-red-400 border border-red-500/40'
-                      }`}>
-                        {motorIniciando ? 'Iniciando...' : motorEncendido ? 'ACTIVO / UNRESTRICTED' : 'APAGADO'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {motorEncendido 
-                        ? 'TweakInit + MCMFilzaStart activos • Sandbox liberado' 
-                        : 'El sandbox de iOS está bloqueando el acceso a /var/mobile/Containers'}
-                    </p>
-                  </div>
+        {filteredItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+            <Folder className="w-12 h-12 text-zinc-700 mb-3" />
+            <p className="text-sm text-zinc-400 font-medium">Esta carpeta está vacía</p>
+            <p className="text-xs text-zinc-600 mt-1 max-w-xs">
+              Usa el botón <Plus className="inline w-3.5 h-3.5 text-emerald-400" /> superior para crear archivos o carpetas aquí.
+            </p>
+          </div>
+        ) : (
+          filteredItems.map((item) => (
+            <div
+              key={item.fullPath}
+              onClick={() => {
+                if (item.isDirectory) {
+                  navigateTo(item.fullPath);
+                } else if (item.item) {
+                  handleOpenFile(item.fullPath, item.item);
+                }
+              }}
+              className="flex items-center justify-between px-4 py-3 hover:bg-zinc-900/60 active:bg-zinc-800/80 cursor-pointer transition-colors group"
+            >
+              <div className="flex items-center gap-3 min-w-0 pr-2">
+                <div className="flex-shrink-0">
+                  {getFileIcon(item.name, item.isDirectory)}
                 </div>
-
-                {/* BOTÓN PRINCIPAL DE ACCIÓN PARA ENCENDER MOTOR */}
-                <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-                  <button
-                    id="btn-encender-motor-card"
-                    onClick={toggleMotor}
-                    disabled={motorIniciando}
-                    className={`flex-1 sm:flex-none px-4 py-2 rounded-lg font-bold text-xs flex items-center justify-center space-x-2 transition shadow-lg ${
-                      motorIniciando
-                        ? 'bg-amber-500 text-black animate-pulse cursor-wait'
-                        : motorEncendido
-                        ? 'bg-[#181d24] text-gray-300 hover:text-white hover:bg-[#202731] border border-[#2f384a]'
-                        : 'bg-[#33ff80] hover:bg-[#4aff91] text-black shadow-[0_0_20px_rgba(51,255,128,0.4)] scale-105'
-                    }`}
-                  >
-                    <Power className={`w-4 h-4 ${motorEncendido ? 'text-red-400' : 'text-black'}`} />
-                    <span>
-                      {motorIniciando 
-                        ? 'Iniciando Motor...' 
-                        : motorEncendido 
-                        ? 'Apagar Motor' 
-                        : '⚡ ENCENDER MOTOR'}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => setMostrarLogsMotor(!mostrarLogsMotor)}
-                    className="px-2.5 py-2 rounded-lg bg-[#141720] hover:bg-[#1c212d] text-gray-400 hover:text-white border border-[#282f40] text-xs flex items-center space-x-1"
-                    title="Ver logs de ejecución del motor"
-                  >
-                    <Terminal className="w-3.5 h-3.5" />
-                    {mostrarLogsMotor ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                  </button>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-zinc-100 truncate group-hover:text-emerald-400 transition-colors">
+                    {item.name}
+                  </div>
+                  <div className="text-[11px] text-zinc-500 font-mono flex items-center gap-2">
+                    <span>{item.isDirectory ? 'Carpeta' : formatFileSize(item.item?.size || 0)}</span>
+                    {item.item?.modifiedDate && (
+                      <>
+                        <span>•</span>
+                        <span>{item.item.modifiedDate}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Logs colapsables de inicialización del motor */}
-              {mostrarLogsMotor && (
-                <div className="mt-3.5 pt-3 border-t border-[#232938]">
-                  <div className="text-[11px] text-gray-400 font-mono mb-1 flex items-center justify-between">
-                    <span>Consola de enlace dinámico (dlsym):</span>
-                    <span className="text-[#33ff80]">RTLD_DEFAULT</span>
-                  </div>
-                  <div className="bg-black/80 rounded-lg p-2.5 border border-[#262c3a] max-h-36 overflow-y-auto space-y-1 text-[11px] font-mono">
-                    {motorLogs.map((log, index) => (
-                      <div key={index} className={log.includes('✅') ? 'text-[#33ff80] font-bold' : log.includes('⚠️') ? 'text-amber-400' : 'text-gray-300'}>
-                        {log}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Search / Manual Bundle ID Input */}
-            <div className="bg-[#121419] rounded-xl border border-[#222631] p-3 shadow-lg">
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleOpenContainer(manualBundleId);
-                }}
-                className="relative flex items-center"
-              >
-                <Search className="w-4 h-4 text-gray-400 absolute left-3 pointer-events-none" />
-                <input
-                  id="input-bundle-id"
-                  type="text"
-                  value={manualBundleId}
-                  onChange={(e) => setManualBundleId(e.target.value)}
-                  placeholder="bundle id manual + return (ej. com.spotify.client)"
-                  className="w-full bg-[#181b22] text-sm text-white placeholder-gray-500 pl-9 pr-24 py-2 rounded-lg border border-[#282d3b] focus:outline-none focus:border-[#33ff80] focus:ring-1 focus:ring-[#33ff80] font-mono transition"
-                />
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <button
-                  type="submit"
-                  disabled={!manualBundleId.trim()}
-                  className="absolute right-1.5 px-3 py-1 bg-[#33ff80] hover:bg-[#48ff8e] disabled:opacity-40 disabled:hover:bg-[#33ff80] text-black font-bold text-xs rounded transition"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(item.fullPath);
+                  }}
+                  className="p-1.5 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Eliminar"
                 >
-                  Abrir
+                  <Trash2 className="w-4 h-4" />
                 </button>
-              </form>
-
-              <div className="mt-2.5 flex items-center justify-between text-[11px] text-gray-400 px-1">
-                <span className="flex items-center gap-1">
-                  <Shield className={`w-3 h-3 ${motorEncendido ? 'text-[#33ff80]' : 'text-red-400'}`} />
-                  MCMFilza Unrestricted Filesystem: <strong className={motorEncendido ? 'text-[#33ff80]' : 'text-red-400'}>{motorEncendido ? 'ACTIVO' : 'INACTIVO'}</strong>
-                </span>
-                <span className="hidden sm:inline text-gray-500">Toca cualquier app para ver su contenedor</span>
-              </div>
-            </div>
-
-            {/* Apps List Table */}
-            <div className="bg-[#121419] rounded-xl border border-[#222631] overflow-hidden shadow-xl">
-              <div className="px-4 py-2.5 bg-[#171a22] border-b border-[#232733] flex items-center justify-between text-xs font-medium text-gray-300">
-                <span>APLICACIONES INSTALADAS ({apps.length})</span>
-                <span>CONTENEDORES</span>
-              </div>
-
-              {apps.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 text-xs">
-                  No se detectaron apps.<br />
-                  Escribe arriba el bundle ID de una app INSTALADA.
-                </div>
-              ) : (
-                <div className="divide-y divide-[#1e222d]">
-                  {apps.map((app) => (
-                    <div
-                      key={app.bundleId}
-                      id={`app-item-${app.bundleId}`}
-                      onClick={() => handleOpenContainer(app.bundleId)}
-                      className="flex items-center justify-between px-4 py-3 hover:bg-[#171b24] cursor-pointer transition group"
-                    >
-                      <div className="flex items-center space-x-3 min-w-0 pr-2">
-                        <div className="w-9 h-9 rounded-lg bg-[#1a1e27] border border-[#2c3242] flex items-center justify-center flex-shrink-0 group-hover:border-[#33ff80]/50 transition">
-                          {getAppIcon(app.iconType)}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-[#33ff80] truncate font-mono group-hover:text-[#5aff9a] transition">
-                            {app.bundleId}
-                          </div>
-                          <div className="text-[11px] text-gray-400 truncate flex items-center gap-2">
-                            <span>{app.name} (v{app.version})</span>
-                            <span className="text-gray-600">•</span>
-                            <span className="text-gray-500">{app.installedSize}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center space-x-2 flex-shrink-0">
-                        <span className="text-[10px] text-gray-500 hidden sm:inline font-mono">toca para explorar</span>
-                        <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-[#33ff80] transition" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Quick Sandbox Guide Info */}
-            <div className="bg-[#111317] border border-[#1e222a] rounded-xl p-4 text-xs text-gray-400 space-y-2">
-              <div className="text-gray-200 font-semibold flex items-center gap-1.5">
-                <Sliders className="w-4 h-4 text-[#33ff80]" />
-                Estructura de Contenedor de Sandbox iOS (Data Container):
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
-                <div className="bg-[#171920] p-2 rounded border border-[#232733]">
-                  <span className="text-[#38bdf8] font-bold">Documents/</span>
-                  <p className="text-gray-400 text-[10px] mt-0.5">Archivos accesibles por el usuario, bases de datos y descargas.</p>
-                </div>
-                <div className="bg-[#171920] p-2 rounded border border-[#232733]">
-                  <span className="text-[#38bdf8] font-bold">Library/Preferences/</span>
-                  <p className="text-gray-400 text-[10px] mt-0.5">Archivos .plist con ajustes y NSUserDefaults de la aplicación.</p>
-                </div>
-                <div className="bg-[#171920] p-2 rounded border border-[#232733]">
-                  <span className="text-[#38bdf8] font-bold">Library/Caches/</span>
-                  <p className="text-gray-400 text-[10px] mt-0.5">Cachés temporales descartables, portadas e imágenes HTTP.</p>
-                </div>
-                <div className="bg-[#171920] p-2 rounded border border-[#232733]">
-                  <span className="text-[#38bdf8] font-bold">tmp/</span>
-                  <p className="text-gray-400 text-[10px] mt-0.5">Directorio volátil para buffers y archivos temporales.</p>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* VIEW 2: FILE BROWSER (FileBrowserVC Screen)                */}
-        {/* ========================================================= */}
-        {currentView === 'browser' && (
-          <div className="space-y-3">
-            
-            {/* Breadcrumb Path & Tool Bar */}
-            <div className="bg-[#121419] rounded-xl border border-[#222631] p-3 space-y-3 shadow-lg">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                
-                {/* Path display */}
-                <div className="flex items-center space-x-1.5 text-xs text-gray-300 font-mono bg-[#171a22] px-2.5 py-1.5 rounded-lg border border-[#262a36] max-w-full overflow-x-auto">
-                  <span className="text-gray-500">Ruta:</span>
-                  <span className="text-[#38bdf8] font-semibold">{currentPath || '/'}</span>
-                </div>
-
-                {/* Actions: New File/Folder */}
-                <div className="flex items-center space-x-2">
-                  <button
-                    id="btn-create-item"
-                    onClick={() => {
-                      setNewFileName('');
-                      setNewFileContent('');
-                      setShowCreateModal(true);
-                    }}
-                    className="px-2.5 py-1.5 bg-[#1e2330] hover:bg-[#282f40] text-[#33ff80] border border-[#2d364a] text-xs font-semibold rounded-lg flex items-center space-x-1 transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Nuevo</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Search filter inside directory */}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-2.5 pointer-events-none" />
-                <input
-                  id="input-filter-files"
-                  type="text"
-                  value={searchFilter}
-                  onChange={(e) => setSearchFilter(e.target.value)}
-                  placeholder="Filtrar archivos en este directorio..."
-                  className="w-full bg-[#181b22] text-xs text-white placeholder-gray-500 pl-8 pr-3 py-1.5 rounded-lg border border-[#262a36] focus:outline-none focus:border-[#38bdf8]"
-                />
-              </div>
-            </div>
-
-            {/* Directory Content Table */}
-            <div className="bg-[#121419] rounded-xl border border-[#222631] overflow-hidden shadow-xl">
-              <div className="divide-y divide-[#1d212b]">
-                
-                {/* ".." Subir (Parent Directory Row) if not at root */}
-                {currentPath !== '/' && (
-                  <div
-                    id="btn-dir-parent"
-                    onClick={handleGoBack}
-                    className="flex items-center justify-between px-4 py-2.5 hover:bg-[#171a22] cursor-pointer text-gray-400 group transition"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-7 h-7 rounded bg-[#181b24] border border-[#292e3c] flex items-center justify-center text-gray-400 group-hover:text-white">
-                        <ArrowLeft className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-gray-400 group-hover:text-white">..</span>
-                        <div className="text-[10px] text-gray-500">subir al directorio superior</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Child entries */}
-                {directoryEntries.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500 text-xs font-mono">
-                    Directorio vacío
-                  </div>
-                ) : (
-                  directoryEntries.map((item) => {
-                    const fullPath = currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`;
-                    
-                    return (
-                      <div
-                        key={item.name}
-                        id={`file-row-${item.name}`}
-                        onClick={() => {
-                          if (item.isDir) {
-                            handleNavigateTo(item.name);
-                          } else {
-                            handleOpenFile(item, fullPath);
-                          }
-                        }}
-                        className="flex items-center justify-between px-4 py-2.5 hover:bg-[#161a22] cursor-pointer transition group"
-                      >
-                        <div className="flex items-center space-x-3 min-w-0 pr-2">
-                          <div className="w-8 h-8 rounded bg-[#181c25] border border-[#282e3c] flex items-center justify-center flex-shrink-0">
-                            {item.isDir ? (
-                              <Folder className="w-4 h-4 text-[#38bdf8] fill-[#38bdf8]/20" />
-                            ) : item.type === 'plist' ? (
-                              <FileCode className="w-4 h-4 text-[#facc15]" />
-                            ) : item.type === 'sqlite' ? (
-                              <Layers className="w-4 h-4 text-[#c084fc]" />
-                            ) : item.type === 'binary' ? (
-                              <Binary className="w-4 h-4 text-emerald-400" />
-                            ) : (
-                              <FileText className="w-4 h-4 text-gray-300" />
-                            )}
-                          </div>
-
-                          <div className="min-w-0">
-                            <div className={`text-xs font-mono truncate font-semibold ${
-                              item.isDir ? 'text-[#38bdf8] group-hover:text-[#60cdff]' : 'text-white'
-                            }`}>
-                              {item.name}
-                            </div>
-                            <div className="text-[10px] text-gray-500 flex items-center gap-2">
-                              <span>{item.isDir ? 'carpeta' : formatFileSize(item.size)}</span>
-                              {item.modifiedDate && (
-                                <>
-                                  <span>•</span>
-                                  <span>{item.modifiedDate}</span>
-                                </>
-                              )}
-                              {item.permissions && (
-                                <>
-                                  <span>•</span>
-                                  <span className="text-gray-600">{item.permissions}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center space-x-3 flex-shrink-0">
-                          {/* Delete Item button */}
-                          <button
-                            onClick={(e) => handleDeleteItem(e, item.name)}
-                            title="Eliminar elemento"
-                            className="p-1 rounded hover:bg-red-500/20 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-
-                          {item.isDir ? (
-                            <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-[#38bdf8] transition" />
-                          ) : (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#1c202a] text-gray-400 border border-[#2b3040] font-mono uppercase">
-                              {item.type || 'FILE'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
+                {item.isDirectory && (
+                  <ChevronRight className="w-4 h-4 text-zinc-600" />
                 )}
               </div>
             </div>
-
-          </div>
+          ))
         )}
-
-        {/* ========================================================= */}
-        {/* VIEW 3: FILE VIEWER / EDITOR (TextViewVC Screen)          */}
-        {/* ========================================================= */}
-        {currentView === 'viewer' && activeFile && (
-          <div className="space-y-3">
-            
-            {/* Viewer Action Toolbar */}
-            <div className="bg-[#121419] rounded-xl border border-[#222631] p-3 flex flex-wrap items-center justify-between gap-2 shadow-lg">
-              <div className="flex items-center space-x-2">
-                <span className="text-xs text-gray-400 font-mono">Modo:</span>
-                <div className="flex bg-[#181b24] p-0.5 rounded-lg border border-[#282d3b] text-xs">
-                  <button
-                    onClick={() => setViewerMode('text')}
-                    className={`px-2.5 py-1 rounded-md transition font-medium ${
-                      viewerMode === 'text' ? 'bg-[#33ff80] text-black font-bold' : 'text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    Texto
-                  </button>
-                  <button
-                    onClick={() => setViewerMode('edit')}
-                    className={`px-2.5 py-1 rounded-md transition font-medium ${
-                      viewerMode === 'edit' ? 'bg-[#33ff80] text-black font-bold' : 'text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    Editor
-                  </button>
-                  <button
-                    onClick={() => setViewerMode('hex')}
-                    className={`px-2.5 py-1 rounded-md transition font-medium ${
-                      viewerMode === 'hex' ? 'bg-[#33ff80] text-black font-bold' : 'text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    Hex Dump
-                  </button>
-                  {activeFile.item.type === 'plist' && (
-                    <button
-                      onClick={() => setViewerMode('plist')}
-                      className={`px-2.5 py-1 rounded-md transition font-medium ${
-                        viewerMode === 'plist' ? 'bg-[#33ff80] text-black font-bold' : 'text-gray-400 hover:text-white'
-                      }`}
-                    >
-                      Plist XML
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* File Info Badges & Save button */}
-              <div className="flex items-center space-x-2">
-                <span className="text-[11px] text-gray-400 bg-[#181c25] px-2 py-1 rounded border border-[#282e3c]">
-                  {formatFileSize(activeFile.item.size)}
-                </span>
-                
-                {viewerMode === 'edit' && (
-                  <button
-                    id="btn-save-file"
-                    onClick={handleSaveFile}
-                    className="px-3 py-1 bg-[#33ff80] hover:bg-[#4dff93] text-black font-bold text-xs rounded-lg flex items-center space-x-1 transition shadow"
-                  >
-                    {saveSuccess ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
-                    <span>{saveSuccess ? 'Guardado' : 'Guardar'}</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Text View / Editor Area (Faithfully styling TextViewVC) */}
-            <div className="bg-black rounded-xl border border-[#222631] overflow-hidden shadow-2xl">
-              <div className="bg-[#111216] px-4 py-2 border-b border-[#222631] flex items-center justify-between text-[11px] text-gray-400">
-                <span className="font-mono text-gray-300 truncate">{activeFile.path}</span>
-                <span className="text-[#33ff80] font-mono">Menlo 11pt</span>
-              </div>
-
-              {/* Editor Mode */}
-              {viewerMode === 'edit' ? (
-                <div className="p-3">
-                  <textarea
-                    id="textarea-file-content"
-                    value={editedContent}
-                    onChange={(e) => setEditedContent(e.target.value)}
-                    rows={20}
-                    className="w-full bg-black text-[#33ff80] font-mono text-xs p-3 rounded border border-[#262a34] focus:outline-none focus:border-[#33ff80] resize-y"
-                    spellCheck={false}
-                  />
-                </div>
-              ) : viewerMode === 'hex' ? (
-                /* Hex Dump View */
-                <div className="p-4 bg-black overflow-x-auto text-[11px] text-emerald-400 font-mono leading-relaxed whitespace-pre selection:bg-emerald-900/50">
-                  {generateHexDump(activeFile.item.content)}
-                </div>
-              ) : (
-                /* Standard Text / Plist View */
-                <div className="p-4 bg-black overflow-x-auto">
-                  <pre className="text-xs text-[#33ff80] font-mono leading-relaxed whitespace-pre-wrap selection:bg-[#33ff80]/30 selection:text-white">
-                    {activeFile.item.content || '(archivo vacío)'}
-                  </pre>
-                </div>
-              )}
-            </div>
-
-          </div>
-        )}
-
       </main>
 
-      {/* Modal for Creating New File or Folder */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#14161d] border border-[#2b3040] rounded-xl max-w-md w-full p-4 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#252a38] pb-2.5">
-              <h3 className="text-sm font-bold text-[#33ff80] flex items-center gap-2 font-mono">
-                <Plus className="w-4 h-4" />
-                Crear Nuevo Elemento
-              </h3>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="text-gray-400 hover:text-white p-1"
+      {/* ========================================================= */}
+      {/* 4. BOTTOM TOOLBAR (Native iOS Filza Toolbar)             */}
+      {/* ========================================================= */}
+      <footer className="fixed bottom-0 left-0 right-0 z-30 bg-[#121214]/95 backdrop-blur-md border-t border-zinc-800/80 px-4 py-2 flex items-center justify-around">
+        <button
+          onClick={() => navigateTo('/')}
+          className={`flex flex-col items-center gap-1 p-1.5 text-xs font-medium transition-colors ${
+            currentPath === '/' ? 'text-emerald-400' : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <HardDrive className="w-5 h-5" />
+          <span>Raíz /</span>
+        </button>
+
+        <button
+          onClick={() => setShowAppsSheet(true)}
+          className={`flex flex-col items-center gap-1 p-1.5 text-xs font-medium transition-colors ${
+            currentPath.includes('Containers') ? 'text-emerald-400' : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Boxes className="w-5 h-5" />
+          <span>Apps</span>
+        </button>
+
+        <button
+          onClick={() => navigateTo('/var/mobile')}
+          className={`flex flex-col items-center gap-1 p-1.5 text-xs font-medium transition-colors ${
+            currentPath === '/var/mobile' ? 'text-emerald-400' : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Smartphone className="w-5 h-5" />
+          <span>Mobile</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setManualPathInput(currentPath);
+            setShowManualPathModal(true);
+          }}
+          className="flex flex-col items-center gap-1 p-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
+        >
+          <CornerDownRight className="w-5 h-5" />
+          <span>Ir a ruta</span>
+        </button>
+      </footer>
+
+      {/* ========================================================= */}
+      {/* 5. MODAL: APPS CONTAINERS SELECTOR (Action Sheet)         */}
+      {/* ========================================================= */}
+      {showAppsSheet && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-[#18181b] border border-zinc-800 rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5">
+            <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-zinc-100 text-sm">Contenedores de Aplicaciones</h3>
+                <p className="text-xs text-zinc-400">Acceso directo a carpetas de apps instaladas</p>
+              </div>
+              <button 
+                onClick={() => setShowAppsSheet(false)}
+                className="p-1.5 text-zinc-400 hover:text-zinc-100 rounded-full hover:bg-zinc-800"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs font-mono">
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCreateType('file')}
-                  className={`flex-1 py-1.5 rounded-lg border text-center font-bold transition ${
-                    createType === 'file' 
-                      ? 'bg-[#33ff80] text-black border-[#33ff80]' 
-                      : 'bg-[#1a1d26] text-gray-400 border-[#2b3040]'
-                  }`}
-                >
-                  Archivo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreateType('folder')}
-                  className={`flex-1 py-1.5 rounded-lg border text-center font-bold transition ${
-                    createType === 'folder' 
-                      ? 'bg-[#38bdf8] text-black border-[#38bdf8]' 
-                      : 'bg-[#1a1d26] text-gray-400 border-[#2b3040]'
-                  }`}
-                >
-                  Carpeta
-                </button>
-              </div>
-
-              <div>
-                <label className="block text-gray-400 mb-1">Nombre:</label>
-                <input
-                  type="text"
-                  value={newFileName}
-                  onChange={(e) => setNewFileName(e.target.value)}
-                  placeholder={createType === 'file' ? 'config.plist' : 'MisDocumentos'}
-                  className="w-full bg-[#1b1f2a] text-white p-2 rounded-lg border border-[#2d3446] focus:outline-none focus:border-[#33ff80]"
-                />
-              </div>
-
-              {createType === 'file' && (
-                <div>
-                  <label className="block text-gray-400 mb-1">Contenido inicial:</label>
-                  <textarea
-                    value={newFileContent}
-                    onChange={(e) => setNewFileContent(e.target.value)}
-                    rows={4}
-                    placeholder="Texto o formato plist..."
-                    className="w-full bg-[#1b1f2a] text-white p-2 rounded-lg border border-[#2d3446] focus:outline-none focus:border-[#33ff80]"
-                  />
-                </div>
-              )}
+            {/* Quick Bundle ID input */}
+            <div className="p-3 bg-zinc-900/60 border-b border-zinc-800/60 flex items-center gap-2">
+              <input
+                type="text"
+                value={manualBundleIdInput}
+                onChange={(e) => setManualBundleIdInput(e.target.value)}
+                placeholder="Bundle ID manual (ej: com.dts.freefireth)"
+                className="flex-1 bg-black text-xs text-zinc-100 placeholder-zinc-500 px-3 py-2 rounded-lg border border-zinc-800 font-mono focus:outline-none focus:border-emerald-500"
+                onKeyDown={(e) => e.key === 'Enter' && handleOpenBundleId(manualBundleIdInput)}
+              />
+              <button
+                onClick={() => handleOpenBundleId(manualBundleIdInput)}
+                className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs rounded-lg active:scale-95 transition-transform"
+              >
+                Abrir
+              </button>
             </div>
 
-            <div className="flex justify-end space-x-2 pt-2 border-t border-[#252a38]">
+            {/* Common Apps List */}
+            <div className="overflow-y-auto p-2 divide-y divide-zinc-800/40">
+              <div 
+                onClick={() => {
+                  navigateTo('/var/mobile/Containers/Data/Application');
+                  setShowAppsSheet(false);
+                }}
+                className="p-3 hover:bg-zinc-800/60 rounded-xl cursor-pointer flex items-center justify-between group"
+              >
+                <div className="flex items-center gap-3">
+                  <Folder className="w-5 h-5 text-blue-400" />
+                  <div>
+                    <div className="text-xs font-semibold text-zinc-100 group-hover:text-emerald-400">
+                      Explorar /Containers/Data/Application
+                    </div>
+                    <div className="text-[10px] text-zinc-500 font-mono">Todos los contenedores de datos de iOS</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-zinc-600" />
+              </div>
+
+              {INITIAL_APPS.map(app => (
+                <div
+                  key={app.bundleId}
+                  onClick={() => handleOpenBundleId(app.bundleId)}
+                  className="p-3 hover:bg-zinc-800/60 rounded-xl cursor-pointer flex items-center justify-between group"
+                >
+                  <div>
+                    <div className="text-xs font-semibold text-emerald-400 group-hover:underline">
+                      {app.name}
+                    </div>
+                    <div className="text-[10px] text-zinc-400 font-mono">{app.bundleId}</div>
+                    <div className="text-[10px] text-zinc-600 font-mono truncate max-w-[280px]">{app.containerPath}</div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-zinc-600" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 6. MODAL: IR A RUTA MANUAL                                */}
+      {/* ========================================================= */}
+      {showManualPathModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#18181b] border border-zinc-800 rounded-2xl w-full max-w-sm p-4 animate-in fade-in scale-95">
+            <h3 className="font-semibold text-zinc-100 text-sm mb-1">Ir a la ruta</h3>
+            <p className="text-xs text-zinc-400 mb-3">Escribe cualquier ruta del sistema de archivos:</p>
+            <input
+              type="text"
+              value={manualPathInput}
+              onChange={(e) => setManualPathInput(e.target.value)}
+              placeholder="/var/mobile/..."
+              className="w-full bg-black text-xs text-emerald-400 font-mono px-3 py-2.5 rounded-xl border border-zinc-700 focus:outline-none focus:border-emerald-500 mb-4"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && manualPathInput.trim()) {
+                  navigateTo(manualPathInput.trim());
+                  setShowManualPathModal(false);
+                }
+              }}
+            />
+            <div className="flex gap-2 justify-end">
               <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="px-3 py-1.5 bg-[#1b1e28] hover:bg-[#262b3a] text-gray-300 text-xs rounded-lg border border-[#2e3447]"
+                onClick={() => setShowManualPathModal(false)}
+                className="px-4 py-2 text-xs text-zinc-400 hover:text-zinc-200"
               >
                 Cancelar
               </button>
               <button
+                onClick={() => {
+                  if (manualPathInput.trim()) {
+                    navigateTo(manualPathInput.trim());
+                    setShowManualPathModal(false);
+                  }
+                }}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs rounded-xl"
+              >
+                Ir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 7. MODAL: NUEVO ELEMENTO (+ CREAR ARCHIVO O CARPETA)      */}
+      {/* ========================================================= */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#18181b] border border-zinc-800 rounded-2xl w-full max-w-sm p-4 animate-in fade-in scale-95">
+            <h3 className="font-semibold text-zinc-100 text-sm mb-1">Nuevo Elemento</h3>
+            <p className="text-xs text-zinc-400 mb-3 font-mono truncate">En: {currentPath}</p>
+
+            <div className="flex gap-2 mb-3">
+              <button
                 type="button"
-                onClick={handleCreateItem}
+                onClick={() => setCreateType('file')}
+                className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                  createType === 'file' 
+                    ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300' 
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                }`}
+              >
+                📄 Archivo
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreateType('folder')}
+                className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                  createType === 'folder' 
+                    ? 'bg-blue-500/20 border-blue-500/60 text-blue-300' 
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                }`}
+              >
+                📁 Carpeta
+              </button>
+            </div>
+
+            <input
+              type="text"
+              value={newFileName}
+              onChange={(e) => setNewFileName(e.target.value)}
+              placeholder={createType === 'file' ? 'nombre.txt' : 'NuevaCarpeta'}
+              className="w-full bg-black text-xs text-zinc-100 font-mono px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-emerald-500 mb-3"
+              autoFocus
+            />
+
+            {createType === 'file' && (
+              <textarea
+                value={newFileContent}
+                onChange={(e) => setNewFileContent(e.target.value)}
+                placeholder="Contenido inicial del archivo (opcional)..."
+                rows={3}
+                className="w-full bg-black text-xs text-zinc-300 font-mono p-3 rounded-xl border border-zinc-700 focus:outline-none focus:border-emerald-500 mb-4 resize-none"
+              />
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setNewFileName('');
+                  setNewFileContent('');
+                  setShowCreateModal(false);
+                }}
+                className="px-4 py-2 text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCreate}
                 disabled={!newFileName.trim()}
-                className="px-4 py-1.5 bg-[#33ff80] hover:bg-[#4bff92] disabled:opacity-40 text-black font-bold text-xs rounded-lg"
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-semibold text-xs rounded-xl"
               >
                 Crear
               </button>
@@ -1121,13 +638,147 @@ export default function App() {
         </div>
       )}
 
-      {/* Footer Status Bar */}
-      <footer className="fixed bottom-0 inset-x-0 bg-[#0d0e11] border-t border-[#1e222a] py-1 px-4 text-[10px] text-gray-500 font-mono flex items-center justify-between z-20">
-        <div>MiFilza Pro v2.0 (com.elvis.mifilzapro) • Unrestricted Engine</div>
-        <div className={motorEncendido ? 'text-[#33ff80]' : 'text-red-400'}>
-          Motor: {motorEncendido ? 'ON (MCMFilza Unrestricted)' : 'OFF (Sandbox Bloqueado)'}
+      {/* ========================================================= */}
+      {/* 8. MODAL: ESTADO DEL MOTOR MCMFILZA                       */}
+      {/* ========================================================= */}
+      {showMotorModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#18181b] border border-emerald-500/40 rounded-2xl w-full max-w-md p-5 animate-in fade-in scale-95 shadow-2xl">
+            <div className="flex items-center gap-2.5 mb-3 text-emerald-400">
+              <Zap className="w-5 h-5 fill-emerald-400" />
+              <h3 className="font-bold text-base text-zinc-100">Motor MCMFilza Activo</h3>
+            </div>
+            
+            <div className="space-y-2 bg-black/80 p-3.5 rounded-xl border border-zinc-800 font-mono text-xs text-zinc-300 mb-4">
+              <div className="flex items-center gap-2 text-emerald-400 font-semibold">
+                <Check className="w-4 h-4" />
+                <span>TweakInit() → Ejecutado OK</span>
+              </div>
+              <div className="flex items-center gap-2 text-emerald-400 font-semibold">
+                <Check className="w-4 h-4" />
+                <span>MCMFilzaStart() → Motor iniciado</span>
+              </div>
+              <div className="flex items-center gap-2 text-emerald-400 font-semibold">
+                <Check className="w-4 h-4" />
+                <span>MCMFilzaSetUnrestrictedFilesystem(1) → ACTIVO</span>
+              </div>
+              <div className="text-[11px] text-zinc-500 pt-2 border-t border-zinc-800">
+                Acceso sin sandbox habilitado para lectura y escritura en todo el sistema de archivos de iOS.
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowMotorModal(false)}
+                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs rounded-xl"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
         </div>
-      </footer>
+      )}
+
+      {/* ========================================================= */}
+      {/* 9. FILE VIEWER & HEX DUMP (Filza Text / Hex Viewer)      */}
+      {/* ========================================================= */}
+      {activeFile && (
+        <div className="fixed inset-0 z-50 bg-[#000000] flex flex-col animate-in fade-in">
+          {/* Viewer Header */}
+          <div className="bg-[#121214] border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
+            <button
+              onClick={() => setActiveFile(null)}
+              className="p-1 text-emerald-400 hover:text-emerald-300 flex items-center gap-1 text-sm font-medium"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Cerrar</span>
+            </button>
+
+            {/* Segmented Control (Texto / Hex / Editar) */}
+            <div className="flex bg-zinc-900 p-0.5 rounded-lg border border-zinc-800 text-xs">
+              <button
+                onClick={() => setViewerMode('text')}
+                className={`px-3 py-1 rounded-md font-medium transition-colors ${
+                  viewerMode === 'text' ? 'bg-emerald-500 text-black font-semibold' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                Texto
+              </button>
+              <button
+                onClick={() => setViewerMode('hex')}
+                className={`px-3 py-1 rounded-md font-medium transition-colors ${
+                  viewerMode === 'hex' ? 'bg-emerald-500 text-black font-semibold' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                Hex Dump
+              </button>
+              <button
+                onClick={() => setViewerMode('edit')}
+                className={`px-3 py-1 rounded-md font-medium transition-colors ${
+                  viewerMode === 'edit' ? 'bg-emerald-500 text-black font-semibold' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                Editar
+              </button>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              {viewerMode === 'edit' ? (
+                <button
+                  onClick={handleSaveFile}
+                  className="flex items-center gap-1 px-3 py-1 bg-emerald-500 text-black font-semibold text-xs rounded-lg active:scale-95 transition-transform"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Guardar</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeFile.item.content || '');
+                    setCopiedNotification(true);
+                    setTimeout(() => setCopiedNotification(false), 2000);
+                  }}
+                  className="p-1.5 text-zinc-400 hover:text-zinc-100 rounded-lg hover:bg-zinc-800"
+                  title="Copiar contenido"
+                >
+                  {copiedNotification ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Subheader info */}
+          <div className="px-4 py-2 bg-zinc-950 border-b border-zinc-900 text-xs font-mono text-zinc-400 flex items-center justify-between">
+            <span className="truncate max-w-xs sm:max-w-md">{activeFile.path}</span>
+            <span>{formatFileSize(activeFile.item.size || 0)}</span>
+          </div>
+
+          {/* Viewer Content */}
+          <div className="flex-1 overflow-auto p-4 bg-black font-mono text-xs">
+            {viewerMode === 'text' && (
+              <pre className="text-emerald-400 whitespace-pre-wrap leading-relaxed">
+                {activeFile.item.content || '(Archivo vacío)'}
+              </pre>
+            )}
+
+            {viewerMode === 'hex' && (
+              <pre className="text-zinc-300 whitespace-pre font-mono leading-relaxed">
+                {generateHexDump(activeFile.item.content)}
+              </pre>
+            )}
+
+            {viewerMode === 'edit' && (
+              <textarea
+                value={editedContent}
+                onChange={(e) => setEditedContent(e.target.value)}
+                className="w-full h-full bg-black text-emerald-300 font-mono text-xs p-2 focus:outline-none resize-none leading-relaxed"
+                autoFocus
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
