@@ -1,6 +1,6 @@
 {
-  "name": "MiFilza",
-  "description": "iOS App Sandbox & File System Explorer replica for inspecting app containers, documents, bundles, and system directories.",
+  "name": "XITFORGE",
+  "description": "XITFORGE - Advanced iOS File Manager, Sandbox Bypass Engine & Tweak Utility.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

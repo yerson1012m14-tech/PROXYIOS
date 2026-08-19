@@ -1,5 +1,8 @@
 #import "ViewController.h"
 #import "Motor.h"
+#import "KeyManager.h"
+#import "LoginKeyViewController.h"
+#import "ScreenShieldManager.h"
 #import <dlfcn.h>
 
 static void asegurarMotor(void) {
@@ -17,7 +20,7 @@ static NSString *fmtSize(unsigned long long b) {
     return [NSString stringWithFormat:@"%.2f GB", b / (1024.0 * 1024.0 * 1024.0)];
 }
 
-#pragma mark - Visor de Texto y Hex (Filza Editor)
+#pragma mark - Visor de Archivos (XITFORGE Editor)
 @interface VisorArchivoVC : UIViewController
 @property (nonatomic, strong) NSString *ruta;
 @property (nonatomic, strong) UITextView *tv;
@@ -29,7 +32,7 @@ static NSString *fmtSize(unsigned long long b) {
 @implementation VisorArchivoVC
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
+    self.view.backgroundColor = [UIColor blackColor];
     self.title = self.ruta.lastPathComponent;
 
     NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:self.ruta error:nil];
@@ -49,8 +52,8 @@ static NSString *fmtSize(unsigned long long b) {
     self.tv = [[UITextView alloc] initWithFrame:CGRectZero];
     self.tv.translatesAutoresizingMaskIntoConstraints = NO;
     self.tv.editable = NO;
-    self.tv.textColor = [UIColor labelColor];
-    self.tv.backgroundColor = [UIColor systemBackgroundColor];
+    self.tv.textColor = [UIColor colorWithRed:0.0 green:0.95 blue:0.5 alpha:1.0];
+    self.tv.backgroundColor = [UIColor blackColor];
     self.tv.font = [UIFont fontWithName:@"Menlo" size:12] ?: [UIFont systemFontOfSize:12];
     self.tv.contentInset = UIEdgeInsetsMake(10, 12, 10, 12);
     [self.view addSubview:self.tv];
@@ -111,7 +114,7 @@ static NSString *fmtSize(unsigned long long b) {
 }
 @end
 
-#pragma mark - Pantalla Principal: Explorador Filza Completo
+#pragma mark - Pantalla Principal: XITFORGE File Manager
 @interface ViewController () <UITableViewDataSource, UITableViewDelegate, UISearchResultsUpdating>
 @property (nonatomic, strong) NSString *rutaActual;
 @property (nonatomic, strong) UITableView *tv;
@@ -140,29 +143,32 @@ static NSString *fmtSize(unsigned long long b) {
         self.rutaActual = @"/var/mobile";
     }
 
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
+    self.view.backgroundColor = [UIColor blackColor];
     [self actualizarTitulo];
 
-    // Barra de navegación: Botón de Motor y Botón + (Crear)
-    UIBarButtonItem *btnMotor = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"bolt.fill"] style:UIBarButtonItemStylePlain target:self action:@selector(tocarMotor)];
-    btnMotor.tintColor = [UIColor systemGreenColor];
-
+    // Botones superiores: Crear (+) y Rayo Motor (⚡)
     UIBarButtonItem *btnNuevo = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(crearNuevo)];
+    btnNuevo.tintColor = [UIColor colorWithRed:0.0 green:0.95 blue:0.5 alpha:1.0];
+
+    UIBarButtonItem *btnMotor = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"bolt.fill"] style:UIBarButtonItemStylePlain target:self action:@selector(abrirOpcionesRapidas)];
+    btnMotor.tintColor = [UIColor colorWithRed:0.0 green:0.95 blue:0.5 alpha:1.0];
+
     self.navigationItem.rightBarButtonItems = @[btnNuevo, btnMotor];
 
     // Search Controller nativo estándar de iOS
     self.searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
     self.searchController.searchResultsUpdater = self;
     self.searchController.obscuresBackgroundDuringPresentation = NO;
-    self.searchController.searchBar.placeholder = @"Buscar archivos o escribir /ruta...";
+    self.searchController.searchBar.placeholder = @"Buscar archivos o filtrar...";
     self.navigationItem.searchController = self.searchController;
     self.navigationItem.hidesSearchBarWhenScrolling = NO;
     self.definesPresentationContext = YES;
 
-    // Tabla estilo Filza estándar anclada a safeAreaLayoutGuide
+    // Tabla estilo Filza estándar anclada a safeArea
     self.tv = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tv.translatesAutoresizingMaskIntoConstraints = NO;
-    self.tv.backgroundColor = [UIColor systemBackgroundColor];
+    self.tv.backgroundColor = [UIColor blackColor];
+    self.tv.separatorColor = [UIColor colorWithWhite:0.15 alpha:1.0];
     self.tv.dataSource = self;
     self.tv.delegate = self;
     [self.view addSubview:self.tv];
@@ -174,7 +180,7 @@ static NSString *fmtSize(unsigned long long b) {
         [self.tv.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor]
     ]];
 
-    // Toolbar inferior estilo Filza
+    // Toolbar inferior XITFORGE (Ir a ruta, Herramientas, Configuración)
     [self configurarToolbarInferior];
 
     [self cargarDirectorio];
@@ -195,21 +201,161 @@ static NSString *fmtSize(unsigned long long b) {
 }
 
 - (void)configurarToolbarInferior {
-    UIBarButtonItem *btnRoot = [[UIBarButtonItem alloc] initWithTitle:@"Raíz /" style:UIBarButtonItemStylePlain target:self action:@selector(irARaiz)];
-    UIBarButtonItem *btnSpace1 = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+    // 1. Ir a Ruta
+    UIBarButtonItem *btnIrRuta = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.triangle.turn.up.right.diamond.fill"] style:UIBarButtonItemStylePlain target:self action:@selector(escribirRutaManual)];
+    UIBarButtonItem *btnTituloRuta = [[UIBarButtonItem alloc] initWithTitle:@"Ir a ruta" style:UIBarButtonItemStylePlain target:self action:@selector(escribirRutaManual)];
     
-    UIBarButtonItem *btnContainers = [[UIBarButtonItem alloc] initWithTitle:@"Apps" style:UIBarButtonItemStylePlain target:self action:@selector(abrirSelectorApps)];
-    UIBarButtonItem *btnSpace2 = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
-    
-    UIBarButtonItem *btnMobile = [[UIBarButtonItem alloc] initWithTitle:@"Mobile" style:UIBarButtonItemStylePlain target:self action:@selector(irAMobile)];
-    UIBarButtonItem *btnSpace3 = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+    UIBarButtonItem *btnSpace = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
 
-    UIBarButtonItem *btnRutaManual = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"] style:UIBarButtonItemStylePlain target:self action:@selector(escribirRutaManual)];
+    // 2. Configuración / Ajustes
+    UIBarButtonItem *btnConfig = [[UIBarButtonItem alloc] initWithTitle:@"⚙️ Ajustes" style:UIBarButtonItemStylePlain target:self action:@selector(abrirConfiguracion)];
 
-    self.toolbarItems = @[btnRoot, btnSpace1, btnContainers, btnSpace2, btnMobile, btnSpace3, btnRutaManual];
-    self.navigationController.toolbar.tintColor = [UIColor systemGreenColor];
+    self.toolbarItems = @[btnIrRuta, btnTituloRuta, btnSpace, btnConfig];
+    self.navigationController.toolbar.tintColor = [UIColor colorWithRed:0.0 green:0.95 blue:0.5 alpha:1.0];
 }
 
+#pragma mark - Menús de Opciones y Configuración
+- (void)abrirHerramientas {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"🛠️ XITFORGE • Herramientas"
+        message:@"Opciones del sistema y acceso a contenedores:"
+        preferredStyle:UIAlertControllerStyleActionSheet];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"📦 Explorar Contenedores de Apps (/Containers)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        [self abrirSelectorApps];
+    }]];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"⚡ Acceso Rápido: Free Fire (com.dts.freefireth)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        [self abrirBundleId:@"com.dts.freefireth"];
+    }]];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"📂 Ir a Raíz (/)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        [self navegarHaciaRuta:@"/"];
+    }]];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"📱 Ir a Carpeta Mobile (/var/mobile)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        [self navegarHaciaRuta:@"/var/mobile"];
+    }]];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"🧹 Limpiar Temporales (/tmp)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        [self limpiarTemporales];
+    }]];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancelar" style:UIAlertActionStyleCancel handler:nil]];
+
+    if (a.popoverPresentationController) {
+        a.popoverPresentationController.barButtonItem = self.toolbarItems[3];
+    }
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)abrirConfiguracion {
+    KeyManager *km = [KeyManager sharedManager];
+    ScreenShieldManager *shield = [ScreenShieldManager sharedManager];
+    NSString *estadoShield = shield.antiCapturaHabilitado ? @"🛡️ ACTIVO (Bloquea Fotos y Videos)" : @"DESACTIVADO";
+    
+    NSString *msg = [NSString stringWithFormat:@"⚙️ XITFORGE UNRESTRICTED v2.0\n• Licencia: %@ (%@)\n• Tiempo Restante: %@\n• HWID: %@\n• Anti-Captura/Grabación: %@\n• Motor MCMFilza: ACTIVO", 
+                     km.isKeyValida ? @"Activa" : @"Sin Key", 
+                     km.tipoLicencia,
+                     km.tiempoRestanteFormateado,
+                     km.deviceId,
+                     estadoShield];
+
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"⚙️ Ajustes del Sistema"
+        message:msg
+        preferredStyle:UIAlertControllerStyleActionSheet];
+
+    // 1. Seguridad
+    NSString *tituloBotonShield = shield.antiCapturaHabilitado ? @"🛡️ Desactivar Anti-Captura / Grabación" : @"🛡️ Activar Anti-Captura / Grabación (Modo Oculto)";
+    [a addAction:[UIAlertAction actionWithTitle:tituloBotonShield style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        shield.antiCapturaHabilitado = !shield.antiCapturaHabilitado;
+        if (shield.antiCapturaHabilitado) {
+            [self mostrarAlerta:@"🛡️ Anti-Captura Activado" msg:@"Cuando alguien tome captura de pantalla o grabe video dentro de XITFORGE, la pantalla se ocultará automáticamente en negro."];
+        } else {
+            [self mostrarAlerta:@"Anti-Captura Desactivado" msg:@"Las capturas y grabaciones ahora son visibles normalmente."];
+        }
+    }]];
+
+    // 2. Mantenimiento del Sistema
+    [a addAction:[UIAlertAction actionWithTitle:@"🧹 Limpiar Caché y Temporales (/tmp)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        [self limpiarTemporales];
+    }]];
+
+    // 3. Sincronización del Motor
+    [a addAction:[UIAlertAction actionWithTitle:@"⚡ Re-sincronizar Motor MCMFilza" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        asegurarMotor();
+        [self mostrarAlerta:@"Motor Sincronizado" msg:@"El bypass de sandbox y MCMFilza se encuentran activos."];
+    }]];
+
+    // 4. Cuenta y Licencia
+    [a addAction:[UIAlertAction actionWithTitle:@"🔑 Cambiar / Activar Otra Key" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        [self pedirKeyManual];
+    }]];
+
+    // 5. Cerrar Sesión
+    [a addAction:[UIAlertAction actionWithTitle:@"🚪 Cerrar Sesión (Volver a Pantalla de Key)" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *act) {
+        [km desactivarKey];
+        LoginKeyViewController *login = [[LoginKeyViewController alloc] init];
+        [UIApplication sharedApplication].windows.firstObject.rootViewController = login;
+    }]];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"Cerrar" style:UIAlertActionStyleCancel handler:nil]];
+
+    if (a.popoverPresentationController) {
+        a.popoverPresentationController.barButtonItem = self.toolbarItems.lastObject;
+    }
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)abrirOpcionesRapidas {
+    [self abrirHerramientas];
+}
+
+- (void)limpiarTemporales {
+    NSError *e = nil;
+    NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:@"/tmp" error:&e];
+    NSUInteger count = 0;
+    for (NSString *f in files) {
+        NSString *full = [@"/tmp" stringByAppendingPathComponent:f];
+        if ([[NSFileManager defaultManager] removeItemAtPath:full error:nil]) {
+            count++;
+        }
+    }
+    [self mostrarAlerta:@"Limpieza Completada" msg:[NSString stringWithFormat:@"Se eliminaron %lu archivos temporales de /tmp.", (unsigned long)count]];
+}
+
+- (void)pedirKeyManual {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Cambiar Key"
+        message:@"Ingresa tu código de licencia XITFORGE:"
+        preferredStyle:UIAlertControllerStyleAlert];
+
+    [a addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.placeholder = @"XXXX-XXXX-XXXX-XXXX";
+        tf.autocapitalizationType = UITextAutocapitalizationTypeAllCharacters;
+        tf.text = [KeyManager sharedManager].keyActual;
+    }];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"Activar" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+        NSString *txt = a.textFields.firstObject.text;
+        NSString *err = nil;
+        BOOL ok = [[KeyManager sharedManager] activarKey:txt error:&err];
+        if (ok) {
+            [self mostrarAlerta:@"Éxito" msg:[NSString stringWithFormat:@"Licencia '%@' activada.", [KeyManager sharedManager].tipoLicencia]];
+        } else {
+            [self mostrarAlerta:@"Error" msg:err ?: @"Key inválida."];
+        }
+    }]];
+
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancelar" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)mostrarAlerta:(NSString *)tit msg:(NSString *)m {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:tit message:m preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+#pragma mark - Navegación de Directorios
 - (void)cargarDirectorio {
     asegurarMotor();
     NSMutableArray *dirs = [NSMutableArray new], *files = [NSMutableArray new];
@@ -243,33 +389,16 @@ static NSString *fmtSize(unsigned long long b) {
     [self.tv reloadData];
 }
 
-- (void)tocarMotor {
-    asegurarMotor();
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"⚡ Motor MCMFilza"
-        message:@"El motor está activo y funcionando.\nAcceso irrestricto al sistema de archivos."
-        preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:a animated:YES completion:nil];
-}
-
-- (void)irARaiz {
-    [self navegarHaciaRuta:@"/"];
-}
-
-- (void)irAMobile {
-    [self navegarHaciaRuta:@"/var/mobile"];
-}
-
 - (void)abrirSelectorApps {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Contenedores de Apps"
-        message:@"Selecciona o escribe el bundle ID:"
+        message:@"Selecciona el directorio de aplicaciones:"
         preferredStyle:UIAlertControllerStyleActionSheet];
 
-    [a addAction:[UIAlertAction actionWithTitle:@"Abrir /Containers/Data/Application" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+    [a addAction:[UIAlertAction actionWithTitle:@"/var/mobile/Containers/Data/Application" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
         [self navegarHaciaRuta:@"/var/mobile/Containers/Data/Application"];
     }]];
 
-    [a addAction:[UIAlertAction actionWithTitle:@"Abrir /Bundle/Application" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+    [a addAction:[UIAlertAction actionWithTitle:@"/var/containers/Bundle/Application" style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
         [self navegarHaciaRuta:@"/var/containers/Bundle/Application"];
     }]];
 
@@ -282,10 +411,6 @@ static NSString *fmtSize(unsigned long long b) {
     }]];
 
     [a addAction:[UIAlertAction actionWithTitle:@"Cancelar" style:UIAlertActionStyleCancel handler:nil]];
-
-    if (a.popoverPresentationController) {
-        a.popoverPresentationController.barButtonItem = self.toolbarItems[2];
-    }
     [self presentViewController:a animated:YES completion:nil];
 }
 
@@ -404,10 +529,10 @@ static NSString *fmtSize(unsigned long long b) {
 
     if (isDir) {
         c.imageView.image = [[UIImage systemImageNamed:@"folder.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-        c.imageView.tintColor = [UIColor systemBlueColor];
-        c.textLabel.textColor = [UIColor labelColor];
+        c.imageView.tintColor = [UIColor colorWithRed:0.0 green:0.85 blue:0.5 alpha:1.0];
+        c.textLabel.textColor = [UIColor whiteColor];
         c.detailTextLabel.text = @"Carpeta";
-        c.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+        c.detailTextLabel.textColor = [UIColor colorWithWhite:0.6 alpha:1.0];
         c.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else {
         NSString *ext = [n.pathExtension lowercaseString];
@@ -419,20 +544,20 @@ static NSString *fmtSize(unsigned long long b) {
             c.imageView.tintColor = [UIColor systemPurpleColor];
         } else if ([ext isEqualToString:@"dylib"] || [ext isEqualToString:@"dat"] || [ext isEqualToString:@"bin"]) {
             c.imageView.image = [[UIImage systemImageNamed:@"cpu.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-            c.imageView.tintColor = [UIColor systemGreenColor];
+            c.imageView.tintColor = [UIColor colorWithRed:0.0 green:0.95 blue:0.5 alpha:1.0];
         } else if ([ext isEqualToString:@"png"] || [ext isEqualToString:@"jpg"] || [ext isEqualToString:@"jpeg"] || [ext isEqualToString:@"car"]) {
             c.imageView.image = [[UIImage systemImageNamed:@"photo.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
             c.imageView.tintColor = [UIColor systemTealColor];
         } else {
             c.imageView.image = [[UIImage systemImageNamed:@"doc.text.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-            c.imageView.tintColor = [UIColor systemGrayColor];
+            c.imageView.tintColor = [UIColor colorWithWhite:0.6 alpha:1.0];
         }
         
-        c.textLabel.textColor = [UIColor labelColor];
+        c.textLabel.textColor = [UIColor whiteColor];
         NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:full error:nil];
         unsigned long long sz = [[attrs objectForKey:@"NSFileSize"] unsignedLongLongValue];
         c.detailTextLabel.text = fmtSize(sz);
-        c.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+        c.detailTextLabel.textColor = [UIColor colorWithWhite:0.5 alpha:1.0];
         c.accessoryType = UITableViewCellAccessoryNone;
     }
 

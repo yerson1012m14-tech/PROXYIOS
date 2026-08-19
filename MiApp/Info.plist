@@ -5,9 +5,9 @@
     <key>CFBundleIdentifier</key>
     <string>com.apple.mobile.MobileHouseArrest</string>
     <key>CFBundleName</key>
-    <string>MiApp</string>
+    <string>XITFORGE</string>
     <key>CFBundleDisplayName</key>
-    <string>MiFilza Pro</string>
+    <string>XITFORGE</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundlePackageType</key>
