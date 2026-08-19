@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>XITFORGE - File Manager</title>
+  
+  <style>
+    :root {
+      --bg-primary: #000000;
+      --bg-secondary: #1C1C1E;
+      --bg-tertiary: #2C2C2E;
+      --bg-glass: rgba(28, 28, 30, 0.85);
+      --accent: #30D158;
+      --accent-glow: rgba(48, 209, 88, 0.25);
+      --accent-hover: #28B84C;
+      --text-primary: #FFFFFF;
+      --text-secondary: #8E8E93;
+      --text-muted: #636366;
+      --separator: rgba(84, 84, 88, 0.45);
+      --destructive: #FF453A;
+      --warning: #FF9F0A;
+      --purple: #BF5AF2;
+      --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+      --font-mono: "SF Mono", Menlo, Monaco, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+    }
+
+    /* Top Navigation Bar (UINavigationBar) */
+    .nav-bar {
+      height: 48px;
+      background: rgba(0, 0, 0, 0.92);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      border-bottom: 0.5px solid var(--separator);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      flex-shrink: 0;
+    }
+
+    .nav-btn {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 17px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      transition: opacity 0.15s;
+    }
+
+    .nav-btn:active {
+      opacity: 0.4;
+    }
+
+    .nav-btn-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      font-size: 18px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .nav-btn-icon:active {
+      background: rgba(255, 255, 255, 0.12);
+      transform: scale(0.95);
+    }
+
+    .nav-title-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      max-width: 190px;
+    }
+
+    .nav-title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+
+    .nav-subtitle {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+
+    /* Search & Filter Section (UISearchController) */
+    .search-container {
+      padding: 8px 12px 6px;
+      background: var(--bg-primary);
+      border-bottom: 0.5px solid var(--separator);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .search-box {
+      background: rgba(118, 118, 128, 0.24);
+      border-radius: 10px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      gap: 6px;
+    }
+
+    .search-box input {
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-size: 15px;
+      width: 100%;
+      outline: none;
+    }
+
+    .search-box input::placeholder {
+      color: var(--text-secondary);
+    }
+
+    .filter-chips {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .filter-chips::-webkit-scrollbar {
+      display: none;
+    }
+
+    .chip {
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      border: 0.5px solid var(--separator);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+
+    .chip:active {
+      transform: scale(0.96);
+    }
+
+    .chip.active {
+      background: var(--accent);
+      color: #000000;
+      font-weight: 600;
+      border-color: var(--accent);
+    }
+
+    /* Breadcrumbs Bar */
+    .breadcrumb-bar {
+      padding: 6px 12px;
+      background: #0d0d0e;
+      border-bottom: 0.5px solid var(--separator);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow-x: auto;
+      white-space: nowrap;
+      flex-shrink: 0;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .breadcrumb-segment {
+      cursor: pointer;
+      color: var(--text-secondary);
+    }
+
+    .breadcrumb-segment:hover, .breadcrumb-segment.current {
+      color: var(--accent);
+      font-weight: bold;
+    }
+
+    /* Table / List View (UITableView) */
+    .file-list {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg-primary);
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .table-section-header {
+      padding: 10px 14px 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: -0.2px;
+      text-transform: uppercase;
+    }
+
+    .table-cell {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 14px;
+      background: var(--bg-primary);
+      border-bottom: 0.5px solid var(--separator);
+      cursor: pointer;
+      transition: background-color 0.15s;
+    }
+
+    .table-cell:active {
+      background-color: var(--bg-secondary);
+    }
+
+    .cell-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .cell-icon-plate {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .cell-icon-plate.folder {
+      background: rgba(48, 209, 88, 0.15);
+      color: var(--accent);
+    }
+
+    .cell-icon-plate.plist {
+      background: rgba(255, 159, 10, 0.15);
+      color: var(--warning);
+    }
+
+    .cell-icon-plate.sqlite {
+      background: rgba(191, 90, 242, 0.15);
+      color: var(--purple);
+    }
+
+    .cell-icon-plate.file {
+      background: rgba(142, 142, 147, 0.15);
+      color: var(--text-secondary);
+    }
+
+    .cell-text {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .cell-title {
+      font-size: 16px;
+      font-weight: 400;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: -0.3px;
+    }
+
+    .cell-subtitle {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--text-secondary);
+      margin-top: 1px;
+    }
+
+    .cell-arrow {
+      color: var(--text-muted);
+      font-size: 16px;
+      margin-left: 8px;
+    }
+
+    /* Bottom UIToolbar */
+    .toolbar {
+      height: 48px;
+      background: rgba(22, 22, 24, 0.92);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      border-top: 0.5px solid var(--separator);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      flex-shrink: 0;
+      min-height: calc(48px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .toolbar-btn {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 15px;
+      font-weight: 400;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .toolbar-btn:active {
+      opacity: 0.4;
+    }
+
+    .toolbar-center {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-secondary);
+    }
+
+    /* ActionSheet Modal (UIAlertController) */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 12px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+      z-index: 100;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .sheet-card {
+      width: 100%;
+      max-width: 380px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+
+    .sheet-group {
+      background: rgba(37, 37, 40, 0.95);
+      backdrop-filter: blur(35px);
+      -webkit-backdrop-filter: blur(35px);
+      border-radius: 14px;
+      overflow: hidden;
+      border: 0.5px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .sheet-header {
+      padding: 14px;
+      text-align: center;
+      border-bottom: 0.5px solid var(--separator);
+    }
+
+    .sheet-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .sheet-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      white-space: pre-line;
+    }
+
+    .sheet-action {
+      width: 100%;
+      padding: 14px;
+      background: none;
+      border: none;
+      border-bottom: 0.5px solid var(--separator);
+      color: var(--accent);
+      font-size: 18px;
+      font-weight: 400;
+      cursor: pointer;
+      text-align: center;
+      display: block;
+      transition: background-color 0.15s;
+    }
+
+    .sheet-action:last-child {
+      border-bottom: none;
+    }
+
+    .sheet-action:active {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .sheet-action.destructive {
+      color: var(--destructive);
+    }
+
+    .sheet-cancel {
+      width: 100%;
+      padding: 14px;
+      background: rgba(37, 37, 40, 0.95);
+      backdrop-filter: blur(35px);
+      -webkit-backdrop-filter: blur(35px);
+      border-radius: 14px;
+      border: 0.5px solid rgba(255, 255, 255, 0.1);
+      color: var(--accent);
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: background-color 0.15s;
+    }
+
+    .sheet-cancel:active {
+      background: var(--bg-tertiary);
+    }
+
+    /* File Viewer Overlay */
+    .viewer-overlay {
+      position: fixed;
+      inset: 0;
+      background: #000000;
+      z-index: 90;
+      display: none;
+      flex-direction: column;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    .viewer-overlay.active {
+      display: flex;
+    }
+
+    .viewer-header {
+      height: 48px;
+      background: var(--bg-secondary);
+      border-bottom: 0.5px solid var(--separator);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      flex-shrink: 0;
+    }
+
+    .segmented-control {
+      display: flex;
+      background: var(--bg-primary);
+      padding: 2px;
+      border-radius: 8px;
+      border: 0.5px solid var(--separator);
+    }
+
+    .seg-btn {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .seg-btn.active {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .viewer-body {
+      flex: 1;
+      overflow: auto;
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      background: #000000;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      -webkit-overflow-scrolling: touch;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <div class="nav-bar">
+    <button class="nav-btn" id="btnBack" style="display: none;" onclick="irAtras()">
+      <span>‹</span> <span id="backTitle">Atrás</span>
+    </button>
+    <div class="nav-title-group" id="navTitleGroup">
+      <span class="nav-title" id="navTitle">/var/mobile</span>
+      <span class="nav-subtitle" id="navSubtitle">MCMFilza Unrestricted</span>
+    </div>
+    <div style="display: flex; gap: 4px;">
+      <button class="nav-btn-icon" onclick="abrirModalNuevo()" title="Nuevo">+</button>
+      <button class="nav-btn-icon" onclick="abrirHerramientas()" title="Herramientas">⚡</button>
+    </div>
+  </div>
+
+  <!-- Search & Category Filters -->
+  <div class="search-container">
+    <div class="search-box">
+      <span>🔍</span>
+      <input type="text" id="searchInput" placeholder="Buscar archivos..." oninput="filtrarLista()">
+    </div>
+    <div class="filter-chips">
+      <button class="chip active" onclick="setFiltro('all', this)">Todos</button>
+      <button class="chip" onclick="setFiltro('folders', this)">Carpetas</button>
+      <button class="chip" onclick="setFiltro('apps', this)">Apps</button>
+      <button class="chip" onclick="setFiltro('sqlite', this)">SQLite</button>
+      <button class="chip" onclick="setFiltro('plists', this)">Plists</button>
+    </div>
+  </div>
+
+  <!-- Breadcrumbs Bar -->
+  <div class="breadcrumb-bar" id="breadcrumbBar">
+    <span class="breadcrumb-segment current" onclick="navegarA('/var/mobile')">/var/mobile</span>
+  </div>
+
+  <!-- File List (UITableView) -->
+  <div class="file-list" id="fileList">
+    <div class="table-section-header" id="sectionHeader">0 ELEMENTOS</div>
+    <div id="tableCellsContainer"></div>
+  </div>
+
+  <!-- Bottom UIToolbar -->
+  <div class="toolbar">
+    <button class="toolbar-btn" onclick="abrirIrARuta()">
+      <span>🧭</span> <span>Ir a ruta</span>
+    </button>
+    <span class="toolbar-center" id="itemCountLabel">Cargando motor...</span>
+    <button class="toolbar-btn" onclick="abrirAjustes()">
+      <span>⚙️</span> <span>Ajustes</span>
+    </button>
+  </div>
+
+  <!-- ActionSheet Modal (UIAlertController) -->
+  <div class="modal-overlay" id="actionSheetModal" onclick="cerrarSheet(event)">
+    <div class="sheet-card" id="sheetCard">
+      <div class="sheet-group">
+        <div class="sheet-header">
+          <div class="sheet-title" id="sheetTitle">🛠️ XITFORGE • Herramientas</div>
+          <div class="sheet-desc" id="sheetDesc">Opciones de acceso a contenedores y bypass:</div>
+        </div>
+        <div id="sheetActionsContainer"></div>
+      </div>
+      <button class="sheet-cancel" onclick="cerrarSheet()">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- Visor de Archivos (VisorArchivoVC) -->
+  <div class="viewer-overlay" id="viewerOverlay">
+    <div class="viewer-header">
+      <button class="nav-btn" onclick="cerrarVisor()">‹ Volver</button>
+      <div class="segmented-control">
+        <button class="seg-btn active" id="btnModeText" onclick="cambiarModoVisor('text')">Texto</button>
+        <button class="seg-btn" id="btnModeHex" onclick="cambiarModoVisor('hex')">Hex</button>
+      </div>
+      <button class="nav-btn" onclick="copiarContenido()">Copiar</button>
+    </div>
+    <div class="viewer-body" id="viewerBody"></div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- ⛔ BLOQUE SCRIPT (CONTRATOS CON EL MOTOR)  -->
+  <!-- ========================================== -->
+  <script>
+    let rutaActual = "/var/mobile";
+    let historialRutas = [];
+    let itemsDirectorio = [];
+    let filtroActual = "all";
+    let textoBusqueda = "";
+    let archivoAbierto = null;
+    let modoVisor = "text";
+
+    // Contratos del HTML con el motor nativo de iOS (WebVC / WKWebView / Motor.m)
+    function pedir(accion, parametro) {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.motor) {
+        window.webkit.messageHandlers.motor.postMessage({ accion: accion, parametro: parametro });
+      } else {
+        return bridgeSimulado(accion, parametro);
+      }
+    }
+
+    function recibir(accion, respuesta) {
+      console.log("[Bridge Motor] recibir:", accion, respuesta);
+      if (accion === "apps") {
+        renderizarApps(respuesta);
+      } else if (accion === "ruta") {
+        if (respuesta && respuesta.ruta) {
+          navegarA(respuesta.ruta);
+        }
+      } else if (accion === "listar") {
+        itemsDirectorio = respuesta || [];
+        renderizarTabla();
+      } else if (accion === "leer") {
+        mostrarContenidoArchivo(respuesta);
+      } else if (accion === "estado") {
+        document.getElementById("itemCountLabel").innerText = "Motor " + respuesta;
+      }
+    }
+
+    function bridgeSimulado(accion, parametro) {
+      setTimeout(function() {
+        if (accion === "estado") {
+          recibir("estado", "ACTIVO");
+        } else if (accion === "apps") {
+          recibir("apps", [
+            { name: "Free Fire", bundleId: "com.dts.freefireth", container: "/var/mobile/Containers/Data/Application/3B9F2A1C-9E40-4C5A-85C1-37DB53A47C10" },
+            { name: "Spotify", bundleId: "com.spotify.client", container: "/var/mobile/Containers/Data/Application/8F9A12B4-5C32-4D90-A871-92EBC417F301" },
+            { name: "WhatsApp", bundleId: "net.whatsapp.WhatsApp", container: "/var/mobile/Containers/Data/Application/1A2B3C4D-5E6F-7A8B-9C0D-1E2F3A4B5C6D" }
+          ]);
+        } else if (accion === "ruta") {
+          if (parametro === "com.dts.freefireth") {
+            recibir("ruta", { ruta: "/var/mobile/Containers/Data/Application/3B9F2A1C-9E40-4C5A-85C1-37DB53A47C10" });
+          } else {
+            recibir("ruta", { ruta: "/var/mobile/Containers/Data/Application" });
+          }
+        } else if (accion === "listar") {
+          var lista = simularListadoDirectorio(parametro || rutaActual);
+          recibir("listar", lista);
+        } else if (accion === "leer") {
+          recibir("leer", {
+            ruta: parametro,
+            contenido: "// XITFORGE Bypass Loaded: " + parametro + "\n// Dispositivo: iPhone 16 Pro Max • iOS 18.3.1\n// Motor MCMFilza: UNRESTRICTED\n{\n  \"status\": \"authorized\",\n  \"hwid\": \"DEV-XIT9-8B92-F401-2026\"\n}"
+          });
+        }
+      }, 30);
+    }
+
+    function simularListadoDirectorio(ruta) {
+      if (ruta.includes("Containers/Data/Application/3B9F2A1C")) {
+        return [
+          { name: "Documents", isDir: true, size: 0, type: "dir", permissions: "drwxr-xr-x" },
+          { name: "Library", isDir: true, size: 0, type: "dir", permissions: "drwxr-xr-x" },
+          { name: "tmp", isDir: true, size: 0, type: "dir", permissions: "drwxr-xr-x" },
+          { name: "com.dts.freefireth.plist", isDir: false, size: 3420, type: "plist", permissions: "-rw-r--r--" },
+          { name: "game_cache.db", isDir: false, size: 2450000, type: "sqlite", permissions: "-rw-r--r--" }
+        ];
+      }
+      return [
+        { name: "Containers", isDir: true, size: 0, type: "dir", permissions: "drwxr-xr-x" },
+        { name: "Applications", isDir: true, size: 0, type: "dir", permissions: "drwxr-xr-x" },
+        { name: "Library", isDir: true, size: 0, type: "dir", permissions: "drwxr-xr-x" },
+        { name: "Media", isDir: true, size: 0, type: "dir", permissions: "drwxr-xr-x" },
+        { name: "Preferences.plist", isDir: false, size: 2150, type: "plist", permissions: "-rw-r--r--" },
+        { name: "engine_hook.dylib", isDir: false, size: 1048576, type: "file", permissions: "-rwxr-xr-x" }
+      ];
+    }
+
+    function navegarA(nuevaRuta) {
+      if (nuevaRuta === rutaActual) return;
+      historialRutas.push(rutaActual);
+      rutaActual = nuevaRuta;
+      actualizarHeader();
+      pedir("listar", rutaActual);
+    }
+
+    function irAtras() {
+      if (historialRutas.length > 0) {
+        rutaActual = historialRutas.pop();
+        actualizarHeader();
+        pedir("listar", rutaActual);
+      }
+    }
+
+    function actualizarHeader() {
+      var partes = rutaActual.split("/").filter(Boolean);
+      var nombreActual = partes.length > 0 ? partes[partes.length - 1] : "/";
+      document.getElementById("navTitle").innerText = nombreActual;
+      document.getElementById("navSubtitle").innerText = rutaActual;
+
+      var btnBack = document.getElementById("btnBack");
+      if (historialRutas.length > 0) {
+        btnBack.style.display = "flex";
+        var anterior = historialRutas[historialRutas.length - 1].split("/").filter(Boolean);
+        document.getElementById("backTitle").innerText = anterior.length > 0 ? anterior[anterior.length - 1] : "Raíz";
+      } else {
+        btnBack.style.display = "none";
+      }
+
+      var bc = document.getElementById("breadcrumbBar");
+      var acum = "";
+      var html = '<span class="breadcrumb-segment" onclick="navegarA(\'/\')">/</span> ';
+      for (var i = 0; i < partes.length; i++) {
+        acum += "/" + partes[i];
+        var estaRuta = acum;
+        var esUltimo = i === partes.length - 1;
+        html += '<span style="color:#636366">/</span> <span class="breadcrumb-segment ' + (esUltimo ? 'current' : '') + '" onclick="navegarA(\'' + estaRuta + '\')">' + partes[i] + '</span> ';
+      }
+      bc.innerHTML = html;
+    }
+
+    function renderizarTabla() {
+      var container = document.getElementById("tableCellsContainer");
+      container.innerHTML = "";
+
+      var filtrados = itemsDirectorio.filter(function(item) {
+        if (filtroActual === "folders" && !item.isDir) return false;
+        if (filtroActual === "sqlite" && !(item.name.endsWith(".db") || item.name.endsWith(".sqlite"))) return false;
+        if (filtroActual === "plists" && !item.name.endsWith(".plist")) return false;
+        if (filtroActual === "apps" && !item.isDir) return false;
+        if (textoBusqueda && !item.name.toLowerCase().includes(textoBusqueda.toLowerCase())) return false;
+        return true;
+      });
+
+      document.getElementById("sectionHeader").innerText = filtrados.length + " ELEMENTOS";
+      document.getElementById("itemCountLabel").innerText = filtrados.length + " ítems • " + rutaActual;
+
+      filtrados.forEach(function(item) {
+        var cell = document.createElement("div");
+        cell.className = "table-cell";
+
+        var plateClass = item.isDir ? "folder" : (item.name.endsWith(".plist") ? "plist" : (item.name.endsWith(".db") || item.name.endsWith(".sqlite") ? "sqlite" : "file"));
+        var iconChar = item.isDir ? "📁" : (item.name.endsWith(".plist") ? "⚙️" : (item.name.endsWith(".db") ? "🗄️" : "📄"));
+        var subtitulo = item.isDir ? "Carpeta de archivos" : formatBytes(item.size || 1024) + " • " + (item.permissions || "-rw-r--r--");
+
+        cell.innerHTML = 
+          '<div class="cell-left">' +
+            '<div class="cell-icon-plate ' + plateClass + '">' + iconChar + '</div>' +
+            '<div class="cell-text">' +
+              '<div class="cell-title">' + item.name + '</div>' +
+              '<div class="cell-subtitle">' + subtitulo + '</div>' +
+            '</div>' +
+          '</div>' +
+          (item.isDir ? '<div class="cell-arrow">›</div>' : '');
+
+        cell.onclick = function() {
+          var pathHijo = rutaActual === "/" ? "/" + item.name : rutaActual + "/" + item.name;
+          if (item.isDir) {
+            navegarA(pathHijo);
+          } else {
+            pedir("leer", pathHijo);
+          }
+        };
+
+        container.appendChild(cell);
+      });
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return "0 B";
+      var k = 1024;
+      var sizes = ["B", "KB", "MB", "GB"];
+      var i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+    }
+
+    function setFiltro(tipo, btn) {
+      filtroActual = tipo;
+      var chips = document.querySelectorAll(".chip");
+      chips.forEach(function(c) { c.classList.remove("active"); });
+      btn.classList.add("active");
+      renderizarTabla();
+    }
+
+    function filtrarLista() {
+      textoBusqueda = document.getElementById("searchInput").value;
+      renderizarTabla();
+    }
+
+    function abrirSheet(titulo, descripcion, acciones) {
+      document.getElementById("sheetTitle").innerText = titulo;
+      document.getElementById("sheetDesc").innerText = descripcion;
+      var container = document.getElementById("sheetActionsContainer");
+      container.innerHTML = "";
+
+      acciones.forEach(function(act) {
+        var btn = document.createElement("button");
+        btn.className = "sheet-action " + (act.destructive ? "destructive" : "");
+        btn.innerText = act.title;
+        btn.onclick = function() {
+          cerrarSheet();
+          act.handler();
+        };
+        container.appendChild(btn);
+      });
+
+      document.getElementById("actionSheetModal").classList.add("active");
+    }
+
+    function cerrarSheet(e) {
+      if (!e || e.target === document.getElementById("actionSheetModal")) {
+        document.getElementById("actionSheetModal").classList.remove("active");
+      }
+    }
+
+    function abrirHerramientas() {
+      abrirSheet("🛠️ XITFORGE • Herramientas", "Acceso directo a contenedores y bypass:", [
+        {
+          title: "⚡ Acceso Rápido: Free Fire (com.dts.freefireth)",
+          handler: function() { pedir("ruta", "com.dts.freefireth"); }
+        },
+        {
+          title: "📦 Explorar Contenedores (/Containers)",
+          handler: function() { pedir("apps"); }
+        },
+        {
+          title: "📱 Carpeta Mobile (/var/mobile)",
+          handler: function() { navegarA("/var/mobile"); }
+        },
+        {
+          title: "📂 Raíz del Sistema (/)",
+          handler: function() { navegarA("/"); }
+        }
+      ]);
+    }
+
+    function abrirAjustes() {
+      abrirSheet("⚙️ Ajustes del Sistema", "XITFORGE v2.0 Unrestricted\nHWID: DEV-XIT9-8B92-F401-2026", [
+        {
+          title: "⚡ Verificar Estado del Motor",
+          handler: function() { pedir("estado"); }
+        },
+        {
+          title: "🧹 Limpiar Temporales (/tmp)",
+          handler: function() {
+            navegarA("/tmp");
+            alert("Ruta /tmp seleccionada para inspección.");
+          }
+        },
+        {
+          title: "🔑 Cerrar Sesión",
+          destructive: true,
+          handler: function() { alert("Sesión finalizada."); }
+        }
+      ]);
+    }
+
+    function renderizarApps(appsList) {
+      var acciones = (appsList || []).map(function(app) {
+        return {
+          title: app.name + " (" + app.bundleId + ")",
+          handler: function() {
+            if (app.container) {
+              navegarA(app.container);
+            } else {
+              pedir("ruta", app.bundleId);
+            }
+          }
+        };
+      });
+      abrirSheet("📦 Contenedores de Apps", "Selecciona una aplicación instalada:", acciones);
+    }
+
+    function abrirIrARuta() {
+      var ruta = prompt("Escribe la ruta del sistema a la que deseas ir:", rutaActual);
+      if (ruta && ruta.trim()) {
+        navegarA(ruta.trim());
+      }
+    }
+
+    function abrirModalNuevo() {
+      var nombre = prompt("Nombre del nuevo archivo o carpeta:", "nuevo_archivo.txt");
+      if (nombre && nombre.trim()) {
+        alert("Elemento \"" + nombre + "\" creado en " + rutaActual);
+        pedir("listar", rutaActual);
+      }
+    }
+
+    function mostrarContenidoArchivo(data) {
+      archivoAbierto = data;
+      document.getElementById("viewerBody").innerText = data.contenido || "(Archivo vacío)";
+      document.getElementById("viewerOverlay").classList.add("active");
+    }
+
+    function cerrarVisor() {
+      document.getElementById("viewerOverlay").classList.remove("active");
+    }
+
+    function cambiarModoVisor(modo) {
+      modoVisor = modo;
+      document.getElementById("btnModeText").classList.toggle("active", modo === "text");
+      document.getElementById("btnModeHex").classList.toggle("active", modo === "hex");
+      if (!archivoAbierto) return;
+
+      if (modo === "text") {
+        document.getElementById("viewerBody").innerText = archivoAbierto.contenido;
+      } else {
+        var str = archivoAbierto.contenido;
+        var hex = "// Offset: Hex Bytes  | ASCII\n";
+        for (var i = 0; i < str.length; i += 16) {
+          var off = i.toString(16).padStart(8, '0');
+          var slice = str.slice(i, i + 16);
+          var hx = "";
+          for (var j = 0; j < slice.length; j++) {
+            hx += slice.charCodeAt(j).toString(16).padStart(2, '0') + " ";
+          }
+          hex += off + ": " + hx.padEnd(48, ' ') + " |" + slice + "|\n";
+        }
+        document.getElementById("viewerBody").innerText = hex;
+      }
+    }
+
+    function copiarContenido() {
+      if (archivoAbierto) {
+        navigator.clipboard.writeText(archivoAbierto.contenido);
+        alert("Contenido copiado al portapapeles.");
+      }
+    }
+
+    window.addEventListener("DOMContentLoaded", function() {
+      pedir("estado");
+      pedir("listar", rutaActual);
+    });
+  </script>
+</body>
+</html>
